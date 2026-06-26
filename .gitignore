@@ -1,0 +1,12 @@
+frontend/node_modules
+frontend/dist
+frontend/.env.local
+frontend/.env.*.local
+*.env.local
+
+# Apps Script credentials
+apps-script/.clasp.json
+
+# OS
+.DS_Store
+Thumbs.db
