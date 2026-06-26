@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'frontend/**'
+      - '.github/workflows/deploy.yml'
   workflow_dispatch:  # allows manual trigger from the Actions tab
 
 permissions:
@@ -40,6 +41,7 @@ jobs:
       - name: Build
         working-directory: frontend
         env:
+          VITE_BASE_PATH: /chore_app/
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
           VITE_FCM_API_KEY: ${{ secrets.VITE_FCM_API_KEY }}
           VITE_FCM_AUTH_DOMAIN: ${{ secrets.VITE_FCM_AUTH_DOMAIN }}

@@ -2,7 +2,12 @@ import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { VitePWA } from 'vite-plugin-pwa';
 
+// VITE_BASE_PATH is set to /chore_app/ in the GitHub Actions workflow.
+// Defaults to / for local dev so localhost:5173/ still works.
+const base = process.env.VITE_BASE_PATH || '/';
+
 export default defineConfig({
+  base,
   plugins: [
     svelte(),
     VitePWA({
@@ -17,17 +22,17 @@ export default defineConfig({
         short_name: 'Chores',
         description: 'Track household chores for the whole family',
         display: 'standalone',
-        start_url: '/',
+        start_url: base,
         background_color: '#ffffff',
         theme_color: '#16a34a',
         icons: [
           {
-            src: '/icons/icon-192.png',
+            src: base + 'icons/icon-192.png',
             sizes: '192x192',
             type: 'image/png'
           },
           {
-            src: '/icons/icon-512.png',
+            src: base + 'icons/icon-512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any maskable'
