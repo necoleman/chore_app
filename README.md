@@ -288,7 +288,7 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
    - `VITE_FCM_APP_ID`
    - `VITE_FCM_VAPID_KEY`
 
-3. In **Settings → Pages**, set the source to the `gh-pages` branch (it will be created automatically on the first deploy).
+3. In **Settings → Pages**, set the source to the `gh-pages` branch (it will be created automatically on the first deploy). (Maybe it works on `main` as well.)
 
 4. Push a commit to `main` that touches anything under `frontend/`. The GitHub Action in `.github/workflows/deploy.yml` will build and deploy automatically. Once it completes, your app is live at:
    ```
