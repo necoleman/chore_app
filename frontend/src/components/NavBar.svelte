@@ -51,8 +51,10 @@
     background: #fff;
     border-top: 1px solid #e5e7eb;
     padding: 8px 0 calc(8px + env(safe-area-inset-bottom));
-    position: sticky;
-    bottom: 0;
+    /* No position: sticky — the 100dvh flex column in App.svelte already pins
+       this to the bottom. Sticky created a stacking context that, on iOS Safari,
+       painted the nav bar OVER fixed modals (obscuring their action buttons). */
+    flex-shrink: 0;
   }
 
   a {
