@@ -477,6 +477,62 @@ Invoke-RestMethod -Uri "$url?action=approve" -Method Post -Body $body
 
 ---
 
+## 13. Responsive & Safe-Area Layout (iOS / Android)
+
+These cases verify the iOS safe-area fixes (status bar overlap and bottom-sheet button visibility). The fixes use `env(safe-area-inset-*)` and `100dvh`, which are no-ops on non-notched devices — so Android is included as a regression check. Test on a **notched iPhone** (e.g. iPhone X or later) for the primary cases.
+
+### LY-01 — Top header clears the status bar (standalone PWA)
+**Preconditions:** App installed to the Home Screen on a notched iPhone. Logged in (any role).
+**Steps:** Launch the app from the Home Screen icon. View the Today screen, then tap the Chores nav item.
+**Expected:** The "Today" and "Chores" titles and the header buttons (refresh, **Add**) sit fully below the iPhone status bar (clock, battery, signal). Nothing is overlapped. The **Add** button is fully tappable.
+
+### LY-02 — Top header clears the status bar (Safari browser)
+**Preconditions:** Notched iPhone, app opened in Safari (not installed).
+**Steps:** Open the app URL. View Today and Chores screens.
+**Expected:** Headers are not obscured by the Safari address bar or status area. Layout looks correct.
+
+### LY-03 — ChoreForm "Add" buttons visible (Safari browser)
+**Preconditions:** Logged in as admin in Safari on iPhone. On the Chores screen.
+**Steps:** Tap **+ Add**. The chore form bottom sheet opens.
+**Expected:** Both **Cancel** and **Save** buttons are fully visible above the Safari bottom toolbar and are tappable without scrolling.
+
+### LY-04 — ChoreForm buttons stay pinned on a long form
+**Preconditions:** Admin, ChoreForm open.
+**Steps:** Set frequency to **Custom days** (expands the weekday grid) and fill all fields so the form is taller than the sheet. Scroll the form up and down.
+**Expected:** The **Cancel**/**Save** action bar stays pinned (sticky) to the bottom of the sheet and remains visible while the fields scroll behind it. Buttons never disappear below the toolbar / home indicator.
+
+### LY-05 — ChoreForm buttons clear the home indicator (standalone)
+**Preconditions:** Installed PWA on a notched iPhone, admin.
+**Steps:** Open the Chores screen, tap **+ Add**.
+**Expected:** Cancel/Save sit above the iOS home indicator (the horizontal bar), with visible spacing, and are tappable.
+
+### LY-06 — Reassign person picker buttons visible
+**Preconditions:** Admin, iPhone. An open assignment exists.
+**Steps:** Tap a chore's three-dot menu → **Reassign**. The person picker sheet opens.
+**Expected:** The person grid and the **Cancel** button are fully visible above the toolbar / home indicator. With many people, the grid scrolls and Cancel stays pinned at the bottom.
+
+### LY-07 — Move date (bump) sheet buttons visible
+**Preconditions:** Admin, iPhone.
+**Steps:** Tap a chore's three-dot menu → **Move date**. The date picker sheet opens.
+**Expected:** The date input and **Cancel**/**Confirm** buttons are fully visible and tappable above the toolbar / home indicator.
+
+### LY-08 — Reject-note modal buttons visible
+**Preconditions:** Admin, iPhone. A chore is in `pending_review`.
+**Steps:** In "Needs review", tap **✗ Send back**. The note modal opens.
+**Expected:** The note input and **Cancel**/**Send back** buttons are fully visible and tappable above the toolbar / home indicator.
+
+### LY-09 — Android regression check (no layout change)
+**Preconditions:** Android device (Chrome or Vivaldi), admin.
+**Steps:** Repeat LY-01, LY-03, LY-06, LY-07, LY-08 on Android.
+**Expected:** Layout is unchanged from before the fix — no extra blank bands at the top, no gaps. All modal buttons are visible and tappable as they were previously.
+
+### LY-10 — Desktop regression check
+**Preconditions:** Desktop browser, admin.
+**Steps:** Open each bottom sheet (Add chore, Reassign, Move date, Send back).
+**Expected:** Sheets render at the bottom of the window with all buttons visible. No unexpected full-height gaps or clipped content.
+
+---
+
 ## Summary Table
 
 | Area | Total Cases | Security Cases |
@@ -493,7 +549,8 @@ Invoke-RestMethod -Uri "$url?action=approve" -Method Post -Body $body
 | Push Notifications | 9 | — |
 | Google Sheets Direct | 6 | — |
 | Security/Pen Tests | 10 | 10 |
-| **Total** | **83** | **10** |
+| Responsive & Safe-Area Layout | 10 | — |
+| **Total** | **93** | **10** |
 
 ---
 
@@ -586,3 +643,13 @@ Copy the table below into a spreadsheet. Fill in **Tester**, **Date**, **Result*
 | SEC-08 | Security | Apps Script URL is public | | | | |
 | SEC-09 | Security | Firebase config exposure | | | | |
 | SEC-10 | Security | Rate limiting and quota exhaustion | | | | |
+| LY-01 | Layout | Top header clears status bar (standalone PWA) | | | | |
+| LY-02 | Layout | Top header clears status bar (Safari browser) | | | | |
+| LY-03 | Layout | ChoreForm Add buttons visible (Safari browser) | | | | |
+| LY-04 | Layout | ChoreForm buttons stay pinned on a long form | | | | |
+| LY-05 | Layout | ChoreForm buttons clear home indicator (standalone) | | | | |
+| LY-06 | Layout | Reassign person picker buttons visible | | | | |
+| LY-07 | Layout | Move date (bump) sheet buttons visible | | | | |
+| LY-08 | Layout | Reject-note modal buttons visible | | | | |
+| LY-09 | Layout | Android regression check (no layout change) | | | | |
+| LY-10 | Layout | Desktop regression check | | | | |

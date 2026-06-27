@@ -158,7 +158,8 @@
 <style>
   .backdrop {
     position: fixed;
-    inset: 0;
+    top: 0; left: 0; right: 0;
+    height: 100dvh;
     background: rgba(0,0,0,0.4);
     display: flex;
     align-items: flex-end;
@@ -169,7 +170,7 @@
   .sheet {
     background: #fff;
     border-radius: 16px 16px 0 0;
-    padding: 12px 20px calc(24px + env(safe-area-inset-bottom));
+    padding: 12px 20px 0;
     width: 100%;
     max-height: 90dvh;
     overflow-y: auto;
@@ -246,9 +247,13 @@
   }
 
   .actions {
+    position: sticky;
+    bottom: 0;
     display: flex;
     gap: 8px;
     margin-top: 8px;
+    padding: 12px 0 calc(8px + env(safe-area-inset-bottom));
+    background: #fff;
   }
 
   .btn {

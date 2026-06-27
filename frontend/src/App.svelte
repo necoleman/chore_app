@@ -49,6 +49,7 @@
     display: flex;
     flex-direction: column;
     height: 100dvh;
+    padding-top: env(safe-area-inset-top);
   }
 
   .content {

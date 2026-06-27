@@ -35,7 +35,8 @@
 <style>
   .backdrop {
     position: fixed;
-    inset: 0;
+    top: 0; left: 0; right: 0;
+    height: 100dvh;
     background: rgba(0,0,0,0.4);
     display: flex;
     align-items: flex-end;
@@ -45,8 +46,10 @@
   .sheet {
     background: #fff;
     border-radius: 16px 16px 0 0;
-    padding: 12px 20px calc(20px + env(safe-area-inset-bottom));
+    padding: 12px 20px 0;
     width: 100%;
+    max-height: 90dvh;
+    overflow-y: auto;
   }
 
   .sheet-handle {
@@ -106,11 +109,14 @@
   }
 
   .cancel-btn {
+    position: sticky;
+    bottom: 0;
     width: 100%;
     padding: 12px;
+    margin-bottom: calc(8px + env(safe-area-inset-bottom));
     border: 1px solid #d1d5db;
     border-radius: 8px;
-    background: none;
+    background: #fff;
     font-size: 14px;
     font-weight: 500;
     color: #374151;
