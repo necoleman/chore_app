@@ -34,8 +34,10 @@
 
   onMount(load);
 
-  function matchesSearch(c) {
-    const q = searchTerm.trim().toLowerCase();
+  // Pass `q` in explicitly so it appears in the reactive statements below —
+  // Svelte only tracks dependencies referenced directly in a `$:` line, not
+  // ones read inside a called function's body.
+  function matchesSearch(c, q) {
     if (!q) return true;
     return (
       (c.name || '').toLowerCase().includes(q) ||
@@ -44,11 +46,15 @@
     );
   }
 
+  $: peopleById = Object.fromEntries(people.map((p) => [p.person_id, p]));
+  $: assigneeName = (id) => (id ? (peopleById[id]?.name ?? id) : null);
+
+  $: q = searchTerm.trim().toLowerCase();
   $: activeChores = chores.filter(
-    (c) => (c.active === true || c.active === 'TRUE') && matchesSearch(c)
+    (c) => (c.active === true || c.active === 'TRUE') && matchesSearch(c, q)
   );
   $: inactiveChores = chores.filter(
-    (c) => c.active !== true && c.active !== 'TRUE' && matchesSearch(c)
+    (c) => c.active !== true && c.active !== 'TRUE' && matchesSearch(c, q)
   );
   $: noResults =
     searchTerm.trim() !== '' && activeChores.length === 0 && inactiveChores.length === 0;
@@ -98,6 +104,11 @@
                 <span class="tag">{chore.points} pts</span>
                 {#if chore.location}
                   <span class="tag tag--location">{chore.location}</span>
+                {/if}
+                {#if chore.default_assignee}
+                  <span class="tag tag--assignee">👤 {assigneeName(chore.default_assignee)}</span>
+                {:else}
+                  <span class="tag tag--claimable">Claimable</span>
                 {/if}
                 {#if chore.requires_approval === true || chore.requires_approval === 'TRUE'}
                   <span class="tag tag--review">Needs approval</span>
@@ -242,6 +253,8 @@
 
   .tag--review { background: #fef3c7; color: #92400e; }
   .tag--location { background: #e0e7ff; color: #3730a3; }
+  .tag--assignee { background: #dcfce7; color: #166534; }
+  .tag--claimable { background: #f3f4f6; color: #6b7280; font-style: italic; }
 
   .chore-actions { display: flex; flex-direction: column; gap: 6px; }
 
