@@ -612,6 +612,16 @@ These cases cover the enhancements: a `location` (dropdown) and `description` on
 **Steps:** Search a term with no matches (e.g. "Reorganize closet").
 **Expected:** A "No chores match …" message and an **Add "Reorganize closet"** button appear. Tapping it opens the add form with the name prefilled.
 
+### SR-04 — Search matches the default assignee's name
+**Preconditions:** At least one chore has a default assignee (e.g. Sam).
+**Steps:** Type the assignee's name (e.g. "Sam") in the search box.
+**Expected:** Chores whose default assignee is Sam appear (matching the displayed 👤 name tag, case-insensitive). Each active row shows the assignee as a tag.
+
+### SR-05 — Search "Unclaimed" finds chores with no default assignee
+**Preconditions:** At least one chore has an empty `default_assignee`.
+**Steps:** Type "unclaimed" in the search box.
+**Expected:** Only chores with no default assignee appear — these display an **Unclaimed** tag in their row, which is also what the search matches.
+
 ### DID-01 — "✓ Did it" logs a done row with no credit
 **Preconditions:** A chore exists that has no assignment today.
 **Steps:** Manage Chores → tap **✓ Did it** on that chore.
@@ -654,8 +664,8 @@ These cases cover the enhancements: a `location` (dropdown) and `description` on
 | Security/Pen Tests | 10 | 10 |
 | Responsive & Safe-Area Layout | 10 | — |
 | App Updates (Service Worker) | 5 | — |
-| Chore Location, Description & Search | 14 | — |
-| **Total** | **112** | **10** |
+| Chore Location, Description & Search | 16 | — |
+| **Total** | **114** | **10** |
 
 ---
 
@@ -772,6 +782,8 @@ Copy the table below into a spreadsheet. Fill in **Tester**, **Date**, **Result*
 | SR-01 | Location/Search | Search filters the chore list | | | | |
 | SR-02 | Location/Search | Search matches location and description | | | | |
 | SR-03 | Location/Search | Add-from-search when nothing matches | | | | |
+| SR-04 | Location/Search | Search matches the default assignee's name | | | | |
+| SR-05 | Location/Search | Search "Unclaimed" finds chores with no default assignee | | | | |
 | DID-01 | Location/Search | "✓ Did it" logs a done row with no credit | | | | |
 | DID-02 | Location/Search | No points awarded by "✓ Did it" | | | | |
 | DID-03 | Location/Search | Ad-hoc done shows in History | | | | |
