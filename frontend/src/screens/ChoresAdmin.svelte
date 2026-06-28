@@ -1,7 +1,6 @@
 <script>
   import { onMount } from 'svelte';
   import { get as apiGet } from '../api/client.js';
-  import { logChoreDone } from '../stores/data.js';
   import ChoreForm from '../components/ChoreForm.svelte';
 
   let chores = [];
@@ -122,10 +121,7 @@
                 {/if}
               </div>
             </div>
-            <div class="chore-actions">
-              <button class="did-btn" on:click={() => logChoreDone(chore.chore_id)}>✓ Did it</button>
-              <button class="edit-btn" on:click={() => (editingChore = chore)}>Edit</button>
-            </div>
+            <button class="edit-btn" on:click={() => (editingChore = chore)}>Edit</button>
           </div>
         {/each}
       </section>
@@ -263,8 +259,6 @@
   .tag--assignee { background: #dcfce7; color: #166534; }
   .tag--unclaimed { background: #f3f4f6; color: #6b7280; font-style: italic; }
 
-  .chore-actions { display: flex; flex-direction: column; gap: 6px; }
-
   .edit-btn {
     background: none;
     border: 1px solid #d1d5db;
@@ -274,18 +268,6 @@
     font-weight: 500;
     cursor: pointer;
     color: #374151;
-  }
-
-  .did-btn {
-    background: #dcfce7;
-    border: 1px solid #bbf7d0;
-    border-radius: 8px;
-    padding: 6px 12px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    color: #16a34a;
-    white-space: nowrap;
   }
 
   .no-results {

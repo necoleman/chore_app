@@ -291,6 +291,18 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 
 **`Invoke-RestMethod` vs `curl`.** PowerShell 5.1 ships an alias `curl` that points to `Invoke-RestMethod`, not the real curl binary. If you have Git for Windows installed, real curl is at `C:\Program Files\Git\mingw64\bin\curl.exe`. The PowerShell cmdlet works fine for this project; just be aware they are different things.
 
+### Switching users / "logging out" during testing
+
+There is intentionally **no log-out button** in the app — each install just remembers who you are. The logged-in person is stored in a single `localStorage` key, **`chore_current_user`**. Clearing it sends you back to the "Who are you?" picker, which is the quickest way to test as a different family member. (The store already has a `logout()` helper in `frontend/src/stores/user.js`; it just isn't wired to any UI.)
+
+**Desktop browser (Chrome/Edge)** — open DevTools (F12) → Console and run:
+```js
+localStorage.removeItem('chore_current_user'); location.reload()
+```
+Equivalent via the UI: DevTools → **Application → Local Storage** → delete the `chore_current_user` key, then reload. (DevTools → **Application → Clear site data** also works, but it additionally wipes the service worker and cache.)
+
+**Installed PWA on iPhone/iPad** — there's no DevTools, so the only built-in option is **Settings → Safari → Advanced → Website Data**, find the site, and delete it (this also clears the cache). For frequent device testing you may instead want to temporarily wire the existing `logout()` to a control (e.g. a tappable build-version marker), then remove it before release.
+
 ---
 
 ## Step 5 — Deploy the Frontend (GitHub Pages)
@@ -360,7 +372,7 @@ The nightly generator runs at 12:01am and creates `Assignments` rows for any cho
 
 **Today screen behavior:** Finished chores (done/skipped) gray out and sort to the bottom of each section; pending-approval chores show in amber (the assignee sees their own as "Waiting for review"). Unfinished chores from previous days stay on Today flagged **Overdue** (sorted to the top) until they're completed or an admin bumps/skips them — there's no age cutoff, so use bump/skip to clear a backlog. A completed chore can be **unchecked** (undo) by the assignee or an admin via the card's "Undo" button, which reverts it to open and removes any awarded points — *except* chores that a parent has already **approved**, which cannot be unchecked.
 
-**Searching and ad-hoc logging:** The Manage Chores screen has a search box (matches name, location, and description). If a search finds nothing, an **Add "…"** button lets you create it prefilled — handy for avoiding duplicates. Each chore row also has a **✓ Did it** button that records the chore as done right now (shows in History) **without** awarding points to anyone — for chores you did that weren't assigned.
+**Searching chores:** The Manage Chores screen has a search box (matches name, location, description, and assignee). If a search finds nothing, an **Add "…"** button lets you create it prefilled — handy for avoiding duplicates. Each chore row has an **Edit** button.
 
 ---
 

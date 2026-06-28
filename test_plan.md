@@ -11,6 +11,8 @@ Test environments needed:
 - **Apps Script editor** (to run jobs manually)
 - **PowerShell** (for API-level tests)
 
+> **Switching users while testing:** the app has no log-out button. To test as a different family member, clear the `chore_current_user` localStorage key (desktop console: `localStorage.removeItem('chore_current_user'); location.reload()`) to return to the person picker. Full steps (desktop + installed iOS PWA) are in the README under *Local Testing → "Switching users / 'logging out' during testing."*
+
 ---
 
 ## 1. Onboarding
@@ -570,7 +572,7 @@ These cases verify that users reliably receive new deployments. The app is a PWA
 
 ## 15. Chore Location, Description & Search
 
-These cases cover the enhancements: a `location` (dropdown) and `description` on chores, a searchable Manage Chores list, add-from-search, and ad-hoc "✓ Did it" logging (credits nobody, no points). Requires a `Locations` tab in the sheet with a few rows, and `location`/`description` columns on the Chores tab.
+These cases cover the enhancements: a `location` (dropdown) and `description` on chores, a searchable Manage Chores list, and add-from-search. Requires a `Locations` tab in the sheet with a few rows, and `location`/`description` columns on the Chores tab.
 
 ### LOC-01 — Location dropdown is populated from the Locations tab
 **Preconditions:** Logged in as admin. `Locations` tab has rows (e.g. Kitchen, Living room, Garage).
@@ -622,31 +624,47 @@ These cases cover the enhancements: a `location` (dropdown) and `description` on
 **Steps:** Type "unclaimed" in the search box.
 **Expected:** Only chores with no default assignee appear — these display an **Unclaimed** tag in their row, which is also what the search matches.
 
-### DID-01 — "✓ Did it" logs a done row with no credit
-**Preconditions:** A chore exists that has no assignment today.
-**Steps:** Manage Chores → tap **✓ Did it** on that chore.
-**Expected:** Success toast. A new `Assignments` row appears with `status=done`, **empty `person_id`**, **empty `points_awarded`**, `assigned_by=manual`, today's `due_date`.
-
-### DID-02 — No points are awarded by "✓ Did it"
-**Steps:** Note any person's `points_total`. Tap **✓ Did it**. Re-check.
-**Expected:** No one's `points_total` changes. The leaderboard is unaffected.
-
-### DID-03 — Ad-hoc done shows in History
-**Steps:** After DID-01, open the History screen.
-**Expected:** The chore appears as done for today with no person name shown (and no points), rendered without errors.
-
-### DID-04 — "✓ Did it" is admin-only surface
-**Preconditions:** Non-admin account.
-**Steps:** Confirm the Manage Chores screen isn't in the nav for non-admins.
-**Expected:** Non-admins have no access to the search list or the "✓ Did it" control (same gating as the rest of chore admin).
-
 ### REG-01 — Existing add/edit/complete unaffected
 **Steps:** Create a chore without a location/description; complete a normal assignment; approve one.
 **Expected:** All existing flows work unchanged; blank location/description cause no errors anywhere.
 
 ---
 
-## 16. List Ordering, Uncheck, Overdue & One-Time Tasks
+## 16. Tap Target, Overflow Menu & Sent-Back Feedback (v0.2.2 fixes)
+
+Covers issue-log items 3–6. Test on iOS Safari where the bugs were reported.
+
+### TAP-01 — Completing requires tapping the circle
+**Preconditions:** An open chore assigned to you on Today.
+**Steps:** Tap the chore's **name** and elsewhere on the card body (not the circle).
+**Expected:** Nothing happens — the chore is NOT marked done. Tapping the **circle** marks it done (and for an unassigned chore, claims it).
+
+### TAP-02 — Dismissing the overflow menu doesn't complete
+**Preconditions:** Admin; a chore with the three-dot menu.
+**Steps:** Open the three-dot menu, then tap outside it to dismiss.
+**Expected:** The menu closes and the chore is NOT marked complete.
+
+### TAP-03 — Move date / Reassign work on your own chore
+**Preconditions:** Admin, viewing a chore **assigned to you**.
+**Steps:** Open the three-dot menu → tap **Move date**; repeat → tap **Reassign**.
+**Expected:** The date picker / person picker opens each time (previously these were no-ops on your own chores). Confirm they still open for a family member's chore too.
+
+### FB-01 — Child sees sent-back feedback with reviewer name
+**Preconditions:** A child completes an approval-required chore (→ pending). An admin sends it back with a note.
+**Steps:** Log in as the child and open Today.
+**Expected:** The chore is back in My Chores (open) and shows "Sent back by {admin name}: {note}". Tapping the circle to re-complete it clears the note.
+
+### FB-02 — Re-completing clears the note
+**Steps:** After FB-01, re-complete the chore, then (if approval required) have the admin approve it.
+**Expected:** The sent-back note no longer appears on the card.
+
+### RM-01 — "Did it" is gone
+**Steps:** Open Manage Chores.
+**Expected:** Each chore row shows only **Edit** (no "✓ Did it"). No console errors. A direct `POST ?action=log_done` returns an "Unknown action" error.
+
+---
+
+## 17. List Ordering, Uncheck, Overdue & One-Time Tasks
 
 Covers the v0.2.0 batch (enhancements 5–8). Requires the `once_date` column on the Chores tab and the redeployed Apps Script.
 
@@ -732,9 +750,10 @@ Covers the v0.2.0 batch (enhancements 5–8). Requires the `once_date` column on
 | Security/Pen Tests | 10 | 10 |
 | Responsive & Safe-Area Layout | 10 | — |
 | App Updates (Service Worker) | 5 | — |
-| Chore Location, Description & Search | 16 | — |
+| Chore Location, Description & Search | 12 | — |
+| Tap Target, Overflow Menu & Sent-Back Feedback | 6 | — |
 | List Ordering, Uncheck, Overdue & One-Time | 14 | — |
-| **Total** | **128** | **10** |
+| **Total** | **130** | **10** |
 
 ---
 
@@ -866,8 +885,10 @@ Copy the table below into a spreadsheet. Fill in **Tester**, **Date**, **Result*
 | ONCE-01 | One-Time | One-time task generates exactly once + auto-archives | | | | |
 | ONCE-02 | One-Time | One-time catch-up generates when date is past | | | | |
 | ONCE-03 | One-Time | One-time form round-trip | | | | |
-| DID-01 | Location/Search | "✓ Did it" logs a done row with no credit | | | | |
-| DID-02 | Location/Search | No points awarded by "✓ Did it" | | | | |
-| DID-03 | Location/Search | Ad-hoc done shows in History | | | | |
-| DID-04 | Location/Search | "✓ Did it" is admin-only surface | | | | |
 | REG-01 | Location/Search | Existing add/edit/complete unaffected | | | | |
+| TAP-01 | Tap/Overflow/Feedback | Completing requires tapping the circle | | | | |
+| TAP-02 | Tap/Overflow/Feedback | Dismissing overflow menu doesn't complete | | | | |
+| TAP-03 | Tap/Overflow/Feedback | Move date / Reassign work on your own chore | | | | |
+| FB-01 | Tap/Overflow/Feedback | Child sees sent-back feedback with reviewer name | | | | |
+| FB-02 | Tap/Overflow/Feedback | Re-completing clears the note | | | | |
+| RM-01 | Tap/Overflow/Feedback | "Did it" is removed from Manage Chores | | | | |

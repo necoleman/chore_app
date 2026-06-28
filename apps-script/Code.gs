@@ -64,7 +64,6 @@ function dispatchPost(action, body) {
     case 'skip':           return actionSkip(body);
     case 'claim':          return actionClaim(body);
     case 'assign':         return actionAssign(body);
-    case 'log_done':       return actionLogDone(body);
     case 'reassign':       return actionReassign(body);
     case 'bump':           return actionBump(body);
     case 'add_chore':      return actionAddChore(body);

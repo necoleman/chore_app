@@ -36,10 +36,10 @@
     <!-- svelte-ignore a11y-click-events-have-key-events -->
     <div class="overlay" on:click={() => (open = false)}></div>
     <div class="menu">
-      <button class="menu-item" on:click={() => { open = false; showReassign = true; }}>
+      <button class="menu-item" on:click|stopPropagation={() => { open = false; showReassign = true; }}>
         ↔ Reassign
       </button>
-      <button class="menu-item" on:click={() => { open = false; showBump = true; }}>
+      <button class="menu-item" on:click|stopPropagation={() => { open = false; showBump = true; }}>
         📅 Move date
       </button>
     </div>

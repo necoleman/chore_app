@@ -319,33 +319,6 @@ function actionAssign(body) {
   return { assignment_id: assignmentId, success: true };
 }
 
-// ─── POST: log_done (ad-hoc completion, no credit) ────────────────────────────
-//
-// Records that a chore was done — independent of any assignment and without
-// awarding points to anyone. Used by the searchable chore list so an admin can
-// note "this got done" for a chore that wasn't assigned today. The row shows in
-// History with no person; no points_total changes.
-
-function actionLogDone(body) {
-  var choreId = body.chore_id;
-  if (!choreId) throw new Error('chore_id required');
-
-  var dueDate = todayStr();
-  var assignmentId = choreId + '_' + dueDate.replace(/-/g, '') + '_' + generateId('m').slice(-6);
-  appendRow('Assignments', {
-    assignment_id: assignmentId,
-    chore_id: choreId,
-    person_id: '',
-    due_date: dueDate,
-    status: 'done',
-    completed_at: nowIso(),
-    points_awarded: '',
-    assigned_by: 'manual',
-  });
-  invalidateCache('Assignments');
-  return { assignment_id: assignmentId, success: true };
-}
-
 // ─── POST: reassign ───────────────────────────────────────────────────────────
 
 function actionReassign(body) {

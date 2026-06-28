@@ -1,6 +1,7 @@
 <script>
   import { currentUser } from '../stores/user.js';
   import {
+    people,
     completeAssignment,
     skipAssignment,
     claimAssignment,
@@ -32,6 +33,14 @@
   // Overdue: an unfinished item whose due date is before today.
   $: isOverdue =
     (isOpen || isPending || isRejected) && assignment.due_date?.slice(0, 10) < today();
+
+  // A non-empty review_note only persists on a sent-back, not-yet-redone chore
+  // (actionReject sets it; actionComplete clears it). Show it as feedback, named
+  // by the reviewer when we can resolve them.
+  $: reviewerName =
+    assignment.reviewed_by
+      ? ($people.find((p) => p.person_id === assignment.reviewed_by)?.name ?? null)
+      : null;
 
   // Admin sees approve/reject inline (not in overflow) for pending items
   $: showApproveReject = showAdminControls && isPending;
@@ -66,13 +75,18 @@
   class:card--skipped={isSkipped}
   class:card--pending={isPending}
   class:card--rejected={isRejected}
-  class:card--interactive={isInteractive}
-  on:click={handleTap}
-  role={isInteractive ? 'button' : undefined}
-  tabindex={isInteractive ? 0 : undefined}
-  on:keydown={(e) => e.key === 'Enter' && handleTap()}
 >
-  <CheckAnimation status={assignment.status} size={32} />
+  {#if isInteractive}
+    <button
+      class="check-btn"
+      on:click={handleTap}
+      aria-label={isUnassigned ? 'Claim chore' : 'Mark done'}
+    >
+      <CheckAnimation status={assignment.status} size={32} />
+    </button>
+  {:else}
+    <CheckAnimation status={assignment.status} size={32} />
+  {/if}
 
   <div class="card-body">
     <div class="chore-name-row">
@@ -93,8 +107,10 @@
       <PendingReviewBadge />
     {/if}
 
-    {#if isRejected && assignment.review_note}
-      <span class="rejection-note">Sent back: {assignment.review_note}</span>
+    {#if assignment.review_note}
+      <span class="rejection-note">
+        Sent back{reviewerName ? ` by ${reviewerName}` : ''}: {assignment.review_note}
+      </span>
     {/if}
 
     {#if assignment.person_id}
@@ -170,13 +186,22 @@
     min-height: 56px;
   }
 
-  .card--interactive {
+  /* Only the circle is the action target (tap-to-complete/claim). Padded to a
+     ~44px tap area for iOS while the visual circle stays 32px. */
+  .check-btn {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    padding: 6px;
+    margin: -6px;
+    line-height: 0;
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
+    border-radius: 50%;
   }
 
-  .card--interactive:active {
-    opacity: 0.7;
+  .check-btn:active {
+    opacity: 0.6;
   }
 
   .card--done {
