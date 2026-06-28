@@ -1,13 +1,23 @@
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { VitePWA } from 'vite-plugin-pwa';
+import { readFileSync } from 'fs';
 
 // VITE_BASE_PATH is set to /chore_app/ in the GitHub Actions workflow.
 // Defaults to / for local dev so localhost:5173/ still works.
 const base = process.env.VITE_BASE_PATH || '/';
 
+// Stamp the build with the package version and a UTC build time so the running
+// app can display which version it is — handy for confirming a deploy landed.
+const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
+const buildTime = new Date().toISOString();
+
 export default defineConfig({
   base,
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+    __BUILD_TIME__: JSON.stringify(buildTime),
+  },
   plugins: [
     svelte(),
     VitePWA({

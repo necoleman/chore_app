@@ -15,6 +15,11 @@
     '/admin/chores': ChoresAdmin,
     '/history': History,
   };
+
+  // Injected by Vite at build time (see vite.config.js `define`).
+  // Format the ISO build time as "YYYY-MM-DD HH:MM UTC".
+  const version = __APP_VERSION__;
+  const buildLabel = __BUILD_TIME__.slice(0, 16).replace('T', ' ') + ' UTC';
 </script>
 
 {#if !$currentUser}
@@ -23,6 +28,7 @@
   <div class="app-shell">
     <main class="content">
       <Router {routes} />
+      <p class="build-marker">v{version} · {buildLabel}</p>
     </main>
     <NavBar />
   </div>
@@ -56,5 +62,13 @@
     flex: 1;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+  }
+
+  .build-marker {
+    text-align: center;
+    font-size: 10px;
+    color: #cbd5e1;
+    padding: 8px 0 16px;
+    user-select: all;
   }
 </style>
