@@ -6,16 +6,20 @@
     claimAssignment,
     approveAssignment,
     rejectAssignment,
+    uncompleteAssignment,
   } from '../stores/data.js';
   import CheckAnimation from './CheckAnimation.svelte';
   import PendingReviewBadge from './PendingReviewBadge.svelte';
   import ApproveRejectBar from './ApproveRejectBar.svelte';
   import AdminOverflowMenu from './AdminOverflowMenu.svelte';
-  import { initials, contrastColor } from '../lib/utils.js';
+  import { initials, contrastColor, today } from '../lib/utils.js';
+  import { portal } from '../lib/portal.js';
 
   export let assignment;
   export let showAdminControls = false;
   export let readonly = false;
+
+  let showUncheckConfirm = false;
 
   $: isOpen = assignment.status === 'open';
   $: isPending = assignment.status === 'pending_review';
@@ -25,9 +29,20 @@
   $: isMine = assignment.person_id === $currentUser?.person_id;
   $: isUnassigned = !assignment.person_id;
 
+  // Overdue: an unfinished item whose due date is before today.
+  $: isOverdue =
+    (isOpen || isPending || isRejected) && assignment.due_date?.slice(0, 10) < today();
+
   // Admin sees approve/reject inline (not in overflow) for pending items
   $: showApproveReject = showAdminControls && isPending;
   $: isInteractive = !readonly && (isOpen || isRejected) && (isMine || isUnassigned);
+
+  // Uncheck: the assignee (or an admin) can undo their own done/pending chore,
+  // unless it has been approved (done with a reviewer recorded).
+  $: canUncheck =
+    !readonly &&
+    (isMine || showAdminControls) &&
+    ((isDone && !assignment.reviewed_by) || isPending);
 
   function handleTap() {
     if (!isInteractive) return;
@@ -36,6 +51,11 @@
     } else {
       completeAssignment(assignment.assignment_id, $currentUser.person_id);
     }
+  }
+
+  function confirmUncheck() {
+    uncompleteAssignment(assignment.assignment_id);
+    showUncheckConfirm = false;
   }
 </script>
 
@@ -58,6 +78,9 @@
       <span class="chore-name">{assignment.chore_name}</span>
       {#if assignment.location}
         <span class="location-tag">{assignment.location}</span>
+      {/if}
+      {#if isOverdue}
+        <span class="overdue-tag">Overdue · {assignment.due_date?.slice(5, 10)}</span>
       {/if}
     </div>
 
@@ -98,8 +121,31 @@
     {#if showAdminControls && !showApproveReject && (isOpen || isPending)}
       <AdminOverflowMenu {assignment} />
     {/if}
+
+    {#if canUncheck}
+      <button
+        class="undo-btn"
+        on:click|stopPropagation={() => (showUncheckConfirm = true)}
+        aria-label="Uncheck chore"
+      >
+        Undo
+      </button>
+    {/if}
   </div>
 </div>
+
+{#if showUncheckConfirm}
+  <div class="modal-backdrop" use:portal on:click|self={() => (showUncheckConfirm = false)}>
+    <div class="modal">
+      <p class="modal-title">Uncheck "{assignment.chore_name}"?</p>
+      <p class="modal-text">This moves it back to your list{assignment.points_awarded ? ' and removes the points' : ''}.</p>
+      <div class="modal-actions">
+        <button class="btn btn--cancel" on:click={() => (showUncheckConfirm = false)}>Cancel</button>
+        <button class="btn btn--uncheck" on:click={confirmUncheck}>Uncheck</button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 {#if showApproveReject}
   <ApproveRejectBar
@@ -241,4 +287,78 @@
     font-size: 12px;
     color: #9ca3af;
   }
+
+  .overdue-tag {
+    font-size: 11px;
+    font-weight: 600;
+    background: #fee2e2;
+    color: #b91c1c;
+    padding: 1px 7px;
+    border-radius: 8px;
+  }
+
+  .undo-btn {
+    background: none;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #6b7280;
+    cursor: pointer;
+  }
+
+  /* Uncheck confirmation modal (same pattern as ApproveRejectBar) */
+  .modal-backdrop {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 100dvh;
+    background: rgba(0,0,0,0.4);
+    display: flex;
+    align-items: flex-end;
+    z-index: 200;
+  }
+
+  .modal {
+    background: #fff;
+    border-radius: 16px 16px 0 0;
+    padding: 24px 20px 0;
+    width: 100%;
+    max-height: 90dvh;
+    overflow-y: auto;
+  }
+
+  .modal-title {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+
+  .modal-text {
+    font-size: 14px;
+    color: #6b7280;
+    margin-bottom: 16px;
+  }
+
+  .modal-actions {
+    position: sticky;
+    bottom: 0;
+    display: flex;
+    gap: 8px;
+    padding: 12px 0 calc(8px + env(safe-area-inset-bottom));
+    background: #fff;
+  }
+
+  .btn {
+    flex: 1;
+    padding: 12px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .btn--cancel { background: #f3f4f6; color: #374151; }
+  .btn--uncheck { background: #dc2626; color: #fff; }
 </style>

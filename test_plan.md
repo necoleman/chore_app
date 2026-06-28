@@ -646,6 +646,74 @@ These cases cover the enhancements: a `location` (dropdown) and `description` on
 
 ---
 
+## 16. List Ordering, Uncheck, Overdue & One-Time Tasks
+
+Covers the v0.2.0 batch (enhancements 5–8). Requires the `once_date` column on the Chores tab and the redeployed Apps Script.
+
+### ORD-01 — Finished chores sort to the bottom
+**Preconditions:** A person has a mix of open and done chores today.
+**Steps:** Open Today.
+**Expected:** Open chores appear above done/skipped ones; finished chores are grayed and grouped at the bottom of the section.
+
+### ORD-02 — Overdue chores sort to the top
+**Preconditions:** The person has both a today chore and an overdue (past-due, still open) chore.
+**Steps:** Open Today.
+**Expected:** The overdue chore appears above today's open chores, with an "Overdue · MM-DD" badge.
+
+### ORD-03 — Kid sees own pending chore in amber
+**Preconditions:** Non-admin. A chore that requires approval.
+**Steps:** Complete it.
+**Expected:** It stays visible in My Chores as an amber card with a "Waiting for review" badge (does not vanish).
+
+### UNC-01 — Uncheck an auto-done chore
+**Preconditions:** A chore (no approval needed) the user completed today.
+**Steps:** Tap "Undo" on the done card → confirm in the dialog.
+**Expected:** Card reverts to open and moves back up; the person's `points_total` drops by the awarded points; assignment row shows `status=open`, blank `completed_at`/`points_awarded`.
+
+### UNC-02 — Uncheck a pending chore
+**Preconditions:** A non-admin's chore is in `pending_review`.
+**Steps:** Tap "Undo" → confirm.
+**Expected:** Reverts to open. No points change (none were awarded).
+
+### UNC-03 — Approved chores cannot be unchecked
+**Preconditions:** A chore that was completed and then **approved** by an admin (`reviewed_by` set).
+**Steps:** View the done card; also try a direct `POST ?action=uncomplete`.
+**Expected:** No "Undo" button is shown on the card; the direct API call returns an error ("Approved chores cannot be unchecked"). Points are unchanged.
+
+### UNC-04 — Uncheck confirmation can be cancelled
+**Steps:** Tap "Undo" → tap "Cancel".
+**Expected:** Nothing changes; the chore stays done.
+
+### UNC-05 — Points never go negative
+**Preconditions:** A person with low `points_total`.
+**Steps:** Uncheck a chore worth more points than their total (edge case).
+**Expected:** `points_total` clamps at 0, not negative.
+
+### OVD-01 — Overdue persists across days
+**Preconditions:** An open assignment with `due_date` set to a past date (edit the sheet or leave one unfinished overnight).
+**Steps:** Open Today.
+**Expected:** It still appears, flagged Overdue, regardless of how old it is (no age cutoff).
+
+### OVD-02 — Resolving/bumping clears overdue
+**Steps:** Complete the overdue chore (or admin bumps it to a future date).
+**Expected:** On complete → moves to the done group (today). On bump to a future date → disappears from Today. Future-dated assignments never show on Today.
+
+### ONCE-01 — One-time task generates exactly once
+**Preconditions:** Create a chore with frequency "One-time" and today's date.
+**Steps:** Run `runNightlyGenerator`; then run it again.
+**Expected:** Exactly one assignment created; the chore's `active` becomes `FALSE`; the second run creates no duplicate.
+
+### ONCE-02 — One-time catch-up
+**Preconditions:** A "once" chore whose `once_date` is in the past and `last_generated_date` is blank.
+**Steps:** Run `runNightlyGenerator`.
+**Expected:** The assignment is generated (catch-up) and the chore auto-archives.
+
+### ONCE-03 — One-time form round-trip
+**Steps:** Add a chore as "One-time" with a date; reopen it in the editor.
+**Expected:** Frequency shows "One-time" and the date field holds the saved `once_date`.
+
+---
+
 ## Summary Table
 
 | Area | Total Cases | Security Cases |
@@ -665,7 +733,8 @@ These cases cover the enhancements: a `location` (dropdown) and `description` on
 | Responsive & Safe-Area Layout | 10 | — |
 | App Updates (Service Worker) | 5 | — |
 | Chore Location, Description & Search | 16 | — |
-| **Total** | **114** | **10** |
+| List Ordering, Uncheck, Overdue & One-Time | 14 | — |
+| **Total** | **128** | **10** |
 
 ---
 
@@ -784,6 +853,19 @@ Copy the table below into a spreadsheet. Fill in **Tester**, **Date**, **Result*
 | SR-03 | Location/Search | Add-from-search when nothing matches | | | | |
 | SR-04 | Location/Search | Search matches the default assignee's name | | | | |
 | SR-05 | Location/Search | Search "Unclaimed" finds chores with no default assignee | | | | |
+| ORD-01 | Ordering/Overdue | Finished chores sort to the bottom | | | | |
+| ORD-02 | Ordering/Overdue | Overdue chores sort to the top | | | | |
+| ORD-03 | Ordering/Overdue | Kid sees own pending chore in amber | | | | |
+| UNC-01 | Uncheck | Uncheck an auto-done chore (points removed) | | | | |
+| UNC-02 | Uncheck | Uncheck a pending chore (no points change) | | | | |
+| UNC-03 | Uncheck | Approved chores cannot be unchecked | | | | |
+| UNC-04 | Uncheck | Uncheck confirmation can be cancelled | | | | |
+| UNC-05 | Uncheck | Points never go negative | | | | |
+| OVD-01 | Ordering/Overdue | Overdue persists across days (no cutoff) | | | | |
+| OVD-02 | Ordering/Overdue | Resolving/bumping clears overdue | | | | |
+| ONCE-01 | One-Time | One-time task generates exactly once + auto-archives | | | | |
+| ONCE-02 | One-Time | One-time catch-up generates when date is past | | | | |
+| ONCE-03 | One-Time | One-time form round-trip | | | | |
 | DID-01 | Location/Search | "✓ Did it" logs a done row with no credit | | | | |
 | DID-02 | Location/Search | No points awarded by "✓ Did it" | | | | |
 | DID-03 | Location/Search | Ad-hoc done shows in History | | | | |

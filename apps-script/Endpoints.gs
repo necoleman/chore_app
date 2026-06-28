@@ -6,7 +6,6 @@ function actionToday(params) {
   var people = getCachedRows('People');
 
   var today = todayStr();
-  var weekStart = getWeekStart();
 
   // Index chores and people for O(1) lookup
   var choreMap = {};
@@ -14,11 +13,11 @@ function actionToday(params) {
   var personMap = {};
   people.forEach(function(p) { personMap[p.person_id] = p; });
 
-  // Filter to today + this week (non-terminal)
+  // Finished items (done/skipped) only for today, so the UI can show them as
+  // completed. Non-terminal items (open/pending_review/rejected) persist
+  // regardless of date so overdue chores stay on Today until resolved or bumped.
   var relevant = assignments.filter(function(a) {
-    if (a.due_date < weekStart) return false;
     if (a.status === 'skipped' || a.status === 'done') {
-      // include done/skipped only from today so the UI can show them as completed
       return a.due_date === today;
     }
     return true;
@@ -155,6 +154,11 @@ function actionComplete(body) {
       status: 'pending_review',
       completed_at: now,
       person_id: personId,
+      // Clear any review fields lingering from a previous reject so a later
+      // auto-done isn't mistaken for "approved" by the uncheck rule.
+      reviewed_by: '',
+      reviewed_at: '',
+      review_note: '',
     });
     invalidateCache('Assignments');
     return { status: 'pending_review', completed_at: now };
@@ -165,6 +169,9 @@ function actionComplete(body) {
       completed_at: now,
       person_id: personId,
       points_awarded: points,
+      reviewed_by: '',
+      reviewed_at: '',
+      review_note: '',
     });
     incrementPoints(personId, points, people);
     invalidateCache('Assignments');
@@ -229,6 +236,43 @@ function actionReject(body) {
 
   invalidateCache('Assignments');
   return { status: 'open', review_note: reviewNote, reviewed_at: now };
+}
+
+// ─── POST: uncomplete (undo a mistaken check) ─────────────────────────────────
+//
+// Reverts a done/pending_review assignment back to open and removes any points
+// that were awarded. Approved chores (status done with reviewed_by set) cannot
+// be unchecked.
+
+function actionUncomplete(body) {
+  var assignmentId = body.assignment_id;
+
+  var assignments = getRows('Assignments');
+  var assignment = assignments.find(function(a) { return a.assignment_id === assignmentId; });
+  if (!assignment) throw new Error('Assignment not found');
+
+  if (assignment.status === 'done' && assignment.reviewed_by) {
+    throw new Error('Approved chores cannot be unchecked');
+  }
+  if (assignment.status !== 'done' && assignment.status !== 'pending_review') {
+    throw new Error('Only completed chores can be unchecked');
+  }
+
+  var awarded = parseInt(assignment.points_awarded, 10) || 0;
+  if (awarded > 0 && assignment.person_id) {
+    var people = getRows('People');
+    incrementPoints(assignment.person_id, -awarded, people);
+    invalidateCache('People');
+  }
+
+  updateRow('Assignments', 'assignment_id', assignmentId, {
+    status: 'open',
+    completed_at: '',
+    points_awarded: '',
+  });
+
+  invalidateCache('Assignments');
+  return { status: 'open', completed_at: null, points_awarded: null };
 }
 
 // ─── POST: skip ───────────────────────────────────────────────────────────────
@@ -362,6 +406,7 @@ function actionAddChore(body) {
     custom_days: body.custom_days || '',
     monthly_day: body.monthly_day || '',
     interval_days: body.interval_days || '',
+    once_date: body.once_date || '',
     last_generated_date: '',
     default_assignee: body.default_assignee || '',
     requires_approval: body.requires_approval === true || body.requires_approval === 'true' ? true : false,
@@ -379,7 +424,7 @@ function actionUpdateChore(body) {
 
   var updates = {};
   var allowed = ['name', 'location', 'description', 'points', 'frequency', 'custom_days',
-                 'monthly_day', 'interval_days', 'default_assignee', 'requires_approval', 'active'];
+                 'monthly_day', 'interval_days', 'once_date', 'default_assignee', 'requires_approval', 'active'];
   allowed.forEach(function(field) {
     if (body.hasOwnProperty(field)) updates[field] = body[field];
   });
@@ -403,9 +448,9 @@ function actionRegisterToken(body) {
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
 function incrementPoints(personId, points, people) {
-  if (points <= 0) return;
+  if (!points) return; // allow negative (undo); skip only a no-op zero
   var person = people.find(function(p) { return p.person_id === personId; });
   if (!person) return;
   var current = parseInt(person.points_total, 10) || 0;
-  updateRow('People', 'person_id', personId, { points_total: current + points });
+  updateRow('People', 'person_id', personId, { points_total: Math.max(0, current + points) });
 }

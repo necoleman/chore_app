@@ -9,16 +9,32 @@
   $: isAdmin = $currentUser?.is_admin;
   $: todayStr = today();
 
-  // Use startsWith so both "2026-06-26" and "2026-06-26T00:00:00" match.
-  $: todayAssignments = $assignments.filter((a) => a.due_date?.startsWith(todayStr));
+  // Finished items (done/skipped) show only for today; unfinished items
+  // (open/pending/rejected) include overdue (due in the past) but never future.
+  $: todayAssignments = $assignments.filter((a) => {
+    const d = a.due_date?.slice(0, 10);
+    if (!d) return false;
+    if (a.status === 'done' || a.status === 'skipped') return d === todayStr;
+    return d <= todayStr;
+  });
+
+  // Sort unfinished above finished; among unfinished, overdue first. Stable.
+  function rank(a) {
+    const finished = a.status === 'done' || a.status === 'skipped';
+    if (finished) return 2;
+    return a.due_date?.slice(0, 10) < todayStr ? 0 : 1;
+  }
+  const byStatus = (x, y) => rank(x) - rank(y);
 
   $: pendingReview = isAdmin
     ? todayAssignments.filter((a) => a.status === 'pending_review')
     : [];
 
-  $: myAssignments = todayAssignments.filter(
-    (a) => a.person_id === $currentUser?.person_id && a.status !== 'pending_review'
-  );
+  // Include the user's own pending_review chores so they see an amber
+  // "Waiting for review" card (instead of it vanishing until reviewed).
+  $: myAssignments = todayAssignments
+    .filter((a) => a.person_id === $currentUser?.person_id)
+    .sort(byStatus);
 
   $: familyAssignments = todayAssignments.filter(
     (a) =>
@@ -34,6 +50,11 @@
     acc[key].items.push(a);
     return acc;
   }, {});
+
+  $: familyGroups = Object.values(familyByPerson).map((g) => ({
+    ...g,
+    items: [...g.items].sort(byStatus),
+  }));
 
   $: unassigned = todayAssignments.filter((a) => !a.person_id && a.status === 'open');
 
@@ -77,10 +98,10 @@
   </section>
 
   <!-- Family's chores -->
-  {#if Object.keys(familyByPerson).length > 0}
+  {#if familyGroups.length > 0}
     <section class="section">
       <h2 class="section-title">Family</h2>
-      {#each Object.values(familyByPerson) as group}
+      {#each familyGroups as group}
         <div class="family-group">
           <span class="family-name">{group.name}</span>
           {#each group.items as a (a.assignment_id)}

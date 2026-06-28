@@ -68,6 +68,19 @@ export async function completeAssignment(assignment_id, person_id) {
   }
 }
 
+export async function uncompleteAssignment(assignment_id) {
+  const prev = getAssignment(assignment_id);
+  updateAssignment(assignment_id, { status: 'open', _optimistic: true });
+  try {
+    await post('uncomplete', { assignment_id });
+    // Points totals changed for the person — refresh to resync people + assignments.
+    await refresh();
+  } catch (e) {
+    rollbackAssignment(assignment_id, prev);
+    showToast(e.message || 'Could not uncheck — try again');
+  }
+}
+
 export async function skipAssignment(assignment_id) {
   const prev = getAssignment(assignment_id);
   updateAssignment(assignment_id, { status: 'skipped', _optimistic: true });

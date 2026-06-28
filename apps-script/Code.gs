@@ -58,6 +58,7 @@ function dispatchGet(action, params) {
 function dispatchPost(action, body) {
   switch (action) {
     case 'complete':       return actionComplete(body);
+    case 'uncomplete':     return actionUncomplete(body);
     case 'approve':        return actionApprove(body);
     case 'reject':         return actionReject(body);
     case 'skip':           return actionSkip(body);

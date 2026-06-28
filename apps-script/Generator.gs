@@ -37,12 +37,13 @@ function runNightlyGenerator() {
       assigned_by: 'auto',
     });
 
-    // Update last_generated_date for monthly/interval chores so catch-up
-    // logic has an accurate anchor point for the next run.
-    if (chore.frequency === 'monthly' || chore.frequency === 'interval') {
-      updateRow('Chores', 'chore_id', chore.chore_id, {
-        last_generated_date: todayISO,
-      });
+    // Update last_generated_date for monthly/interval/once chores so catch-up
+    // logic has an accurate anchor point for the next run. One-time ("once")
+    // chores also auto-archive (active=false) so they leave the active list.
+    if (chore.frequency === 'monthly' || chore.frequency === 'interval' || chore.frequency === 'once') {
+      var choreUpdates = { last_generated_date: todayISO };
+      if (chore.frequency === 'once') choreUpdates.active = false;
+      updateRow('Chores', 'chore_id', chore.chore_id, choreUpdates);
     }
 
     // Send immediate push notification if the chore has a default assignee.

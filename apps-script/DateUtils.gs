@@ -25,6 +25,12 @@ function isDueToday(chore, today) {
 
   if (freq === 'daily') return true;
 
+  if (freq === 'once') {
+    if (chore.last_generated_date) return false;        // already generated → never again
+    if (!chore.once_date) return false;
+    return formatDate(today) >= chore.once_date;         // due on/after the target date (catch-up)
+  }
+
   if (freq === 'weekly') {
     var choreDay = parseInt(chore.custom_days, 10); // store weekday as 0–6
     return today.getDay() === choreDay;

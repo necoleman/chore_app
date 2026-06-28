@@ -28,7 +28,7 @@ person_id | name | color | fcm_token | points_total | streak_current | streak_be
 
 **Chores**
 ```
-chore_id | name | location | description | points | frequency | custom_days | monthly_day | interval_days | last_generated_date | default_assignee | requires_approval | active
+chore_id | name | location | description | points | frequency | custom_days | monthly_day | interval_days | once_date | last_generated_date | default_assignee | requires_approval | active
 ```
 
 **Locations** (feeds the location dropdown in the chore editor — one row per allowed location)
@@ -341,7 +341,7 @@ Required columns:
 - `chore_id` — unique slug, e.g. `c_dishes`. **Never change this once set.**
 - `name` — display name
 - `points` — integer
-- `frequency` — one of: `daily`, `weekly`, `custom`, `monthly`, `interval`
+- `frequency` — one of: `daily`, `weekly`, `custom`, `monthly`, `interval`, `once`
 - `active` — `TRUE`
 - `requires_approval` — `TRUE` or `FALSE`
 
@@ -354,8 +354,11 @@ Frequency-specific columns (leave blank when not applicable):
 - `custom` → `custom_days`: comma-separated day names, e.g. `monday,wednesday,friday`
 - `monthly` → `monthly_day`: day of month 1–31
 - `interval` → `interval_days`: number of days between occurrences, e.g. `90`
+- `once` → `once_date`: a single date (`YYYY-MM-DD`) for a one-time task. The generator creates exactly one assignment on/after that date, then auto-archives the chore (`active=FALSE`) so it leaves the active list. It still appears in History.
 
 The nightly generator runs at 12:01am and creates `Assignments` rows for any chore due that day. To test it immediately, run `runNightlyGenerator` manually from the Apps Script editor.
+
+**Today screen behavior:** Finished chores (done/skipped) gray out and sort to the bottom of each section; pending-approval chores show in amber (the assignee sees their own as "Waiting for review"). Unfinished chores from previous days stay on Today flagged **Overdue** (sorted to the top) until they're completed or an admin bumps/skips them — there's no age cutoff, so use bump/skip to clear a backlog. A completed chore can be **unchecked** (undo) by the assignee or an admin via the card's "Undo" button, which reverts it to open and removes any awarded points — *except* chores that a parent has already **approved**, which cannot be unchecked.
 
 **Searching and ad-hoc logging:** The Manage Chores screen has a search box (matches name, location, and description). If a search finds nothing, an **Add "…"** button lets you create it prefilled — handy for avoiding duplicates. Each chore row also has a **✓ Did it** button that records the chore as done right now (shows in History) **without** awarding points to anyone — for chores you did that weren't assigned.
 

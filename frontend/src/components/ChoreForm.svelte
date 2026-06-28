@@ -23,6 +23,7 @@
         custom_days: '',
         monthly_day: '',
         interval_days: '',
+        once_date: '',
         default_assignee: '',
         requires_approval: false,
         active: true,
@@ -113,6 +114,7 @@
           <option value="custom">Custom days</option>
           <option value="monthly">Monthly</option>
           <option value="interval">Every N days</option>
+          <option value="once">One-time</option>
         </select>
       </label>
 
@@ -152,6 +154,13 @@
         <label class="field">
           <span class="label">Every how many days?</span>
           <input type="number" min="1" bind:value={form.interval_days} class="input input--sm" placeholder="e.g. 90" />
+        </label>
+      {/if}
+
+      {#if form.frequency === 'once'}
+        <label class="field">
+          <span class="label">Date</span>
+          <input type="date" bind:value={form.once_date} class="input input--sm" />
         </label>
       {/if}
 
