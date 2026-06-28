@@ -533,6 +533,41 @@ These cases verify the iOS safe-area fixes (status bar overlap and bottom-sheet 
 
 ---
 
+## 14. App Updates (Service Worker)
+
+These cases verify that users reliably receive new deployments. The app is a PWA whose service worker precaches the app shell (JS/CSS/HTML), so a stale cache can otherwise pin users to an old version. The service worker calls `self.skipWaiting()` + `clientsClaim()` and the registration uses `registerType: 'autoUpdate'`, so a new build should activate and reload on the user's next open/refresh.
+
+> **One-time caveat:** installs running a service worker built *before* `skipWaiting`/`clientsClaim` was added will not auto-update on that first transition — they must be fully closed and reopened once to adopt the new SW. Every deploy after that auto-updates. UP-02 captures this.
+
+### UP-01 — New deploy is picked up automatically
+**Preconditions:** App already open/installed on a device running a build that *already* includes `skipWaiting`/`clientsClaim`.
+**Steps:**
+1. Make a small, visible change (e.g. tweak a heading) and deploy it via the normal GitHub Actions pipeline. Wait for the Action to finish.
+2. On the device, reopen the app (or refresh once).
+**Expected:** Within a moment the page reloads itself and the visible change appears — without clearing site data, uninstalling, or manually closing the app.
+
+### UP-02 — First transition from a pre-fix build
+**Preconditions:** Device running the *old* service worker (the build before `skipWaiting`/`clientsClaim` was added).
+**Steps:** Deploy the build that adds the fix. Refresh once — observe it may NOT update. Then fully close the app (swipe-close the PWA / close all tabs) and reopen.
+**Expected:** After the full close-and-reopen, the new version is active. (This is the expected one-time behavior; subsequent deploys follow UP-01.)
+
+### UP-03 — Update while the app is open
+**Preconditions:** App open and in use on a build with the fix.
+**Steps:** Deploy a new build while the app stays open. Continue interacting; trigger a navigation or wait for the next update check.
+**Expected:** The app auto-reloads into the new version. Any in-progress unsaved input is lost on reload (acceptable), but no crash or broken state results.
+
+### UP-04 — Data freshness is independent of shell version
+**Preconditions:** App open on any build.
+**Steps:** Change an assignment's status directly in the Sheet (or from another device). Wait for the poll / pull to refresh.
+**Expected:** New chore data appears regardless of app-shell version (the Apps Script API uses a NetworkFirst strategy, so data is not pinned to the cached shell). Confirms a stale shell never serves stale *data*.
+
+### UP-05 — Offline still loads the cached shell
+**Preconditions:** App opened at least once (shell cached). Device set to airplane mode / offline.
+**Steps:** Launch the app offline.
+**Expected:** The app shell loads from cache (no browser "no internet" error page). Data calls fail gracefully (show last cached data or an error/empty state), and the app recovers when back online.
+
+---
+
 ## Summary Table
 
 | Area | Total Cases | Security Cases |
@@ -550,7 +585,8 @@ These cases verify the iOS safe-area fixes (status bar overlap and bottom-sheet 
 | Google Sheets Direct | 6 | — |
 | Security/Pen Tests | 10 | 10 |
 | Responsive & Safe-Area Layout | 10 | — |
-| **Total** | **93** | **10** |
+| App Updates (Service Worker) | 5 | — |
+| **Total** | **98** | **10** |
 
 ---
 
@@ -653,3 +689,8 @@ Copy the table below into a spreadsheet. Fill in **Tester**, **Date**, **Result*
 | LY-08 | Layout | Reject-note modal buttons visible | | | | |
 | LY-09 | Layout | Android regression check (no layout change) | | | | |
 | LY-10 | Layout | Desktop regression check | | | | |
+| UP-01 | App Updates | New deploy is picked up automatically | | | | |
+| UP-02 | App Updates | First transition from a pre-fix build | | | | |
+| UP-03 | App Updates | Update while the app is open | | | | |
+| UP-04 | App Updates | Data freshness independent of shell version | | | | |
+| UP-05 | App Updates | Offline still loads the cached shell | | | | |
