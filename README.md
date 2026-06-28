@@ -294,12 +294,16 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
    - `VITE_FCM_APP_ID`
    - `VITE_FCM_VAPID_KEY`
 
-3. In **Settings → Pages**, set the source to the `gh-pages` branch (it will be created automatically on the first deploy). (Maybe it works on `main` as well.)
+   These are read at build time by the GitHub Action ([.github/workflows/deploy.yml](.github/workflows/deploy.yml)) and inlined into the bundle. The `VITE_FCM_*` values are baked into **both** the main app (`src/lib/fcm.js`) and the service worker (`src/sw.js`, for background push) — if they're missing, the app still works but background notifications won't.
 
-4. Push a commit to `main` that touches anything under `frontend/`. The GitHub Action in `.github/workflows/deploy.yml` will build and deploy automatically. Once it completes, your app is live at:
+3. In **Settings → Pages**, set **Source** to **GitHub Actions** (not "Deploy from a branch"). The workflow uses `actions/deploy-pages`, so there is no `gh-pages` branch to select.
+
+4. Push a commit to `main` that touches anything under `frontend/` (or the workflow file), or trigger the workflow manually from the **Actions** tab (**Run workflow**). The Action builds and deploys automatically. Once it completes, your app is live at:
    ```
    https://YOUR_GITHUB_USERNAME.github.io/chore_app/
    ```
+
+   > **Subdirectory base path:** the app is served from `/chore_app/`, not the domain root. The workflow sets `VITE_BASE_PATH=/chore_app/` at build time so all asset, manifest, and service-worker paths resolve correctly. If you fork this to a repo with a different name, update `VITE_BASE_PATH` in [.github/workflows/deploy.yml](.github/workflows/deploy.yml) to `/<your-repo-name>/`.
 
 ---
 
@@ -349,6 +353,10 @@ The nightly generator runs at 12:01am and creates `Assignments` rows for any cho
 **Updating the backend:** Edit the `.gs` files, paste the changes into the Apps Script editor, and publish a new deployment version. The URL stays the same.
 
 **Updating the frontend:** Push to `main`. The GitHub Action redeploys automatically.
+
+**How users get updates:** The service worker calls `skipWaiting()` + `clientsClaim()` and the PWA registers with `registerType: 'autoUpdate'`, so a new deploy activates and the page reloads itself on the user's next open/refresh — no manual reinstall needed. To confirm which build is live, check the small version marker at the bottom of any screen (`v<version> · <build time UTC>`); it's stamped from `frontend/package.json` + build time. Bump the version in `package.json` for each release (and run `npm install` so `package-lock.json` stays in sync — the deploy uses `npm ci`, which fails if they drift).
+
+**If a device seems stuck on an old version:** clear the site once — desktop: DevTools → Application → Service Workers → Unregister, then Clear storage; iPhone PWA: delete and re-add the Home Screen icon. Subsequent updates then apply automatically.
 
 **Archiving old data:** Once a year, move `Assignments` rows older than 6–12 months to an `Assignments_Archive` tab (same columns) to keep the live tab fast.
 

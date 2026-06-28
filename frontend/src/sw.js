@@ -7,35 +7,14 @@ import { precacheAndRoute } from 'workbox-precaching';
 import { registerRoute } from 'workbox-routing';
 import { NetworkFirst } from 'workbox-strategies';
 
-// FCM background message handler (compat SDK via importScripts).
-// The version must match the firebase package version in package.json.
-importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js');
+// ─── Core service worker (must always succeed) ────────────────────────────────
+// Set this up BEFORE touching Firebase so a missing/invalid FCM config can never
+// stop the SW from installing — that bug previously made the whole SW fail to
+// evaluate, breaking offline caching and auto-update.
 
-firebase.initializeApp({
-  apiKey: self.FIREBASE_API_KEY,
-  authDomain: self.FIREBASE_AUTH_DOMAIN,
-  projectId: self.FIREBASE_PROJECT_ID,
-  storageBucket: self.FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: self.FIREBASE_MESSAGING_SENDER_ID,
-  appId: self.FIREBASE_APP_ID,
-});
-
-const messaging = firebase.messaging();
-
-messaging.onBackgroundMessage((payload) => {
-  const { title, body, icon } = payload.notification ?? {};
-  self.registration.showNotification(title ?? 'Chores', {
-    body: body ?? '',
-    icon: icon ?? '/icons/icon-192.png',
-    badge: '/icons/icon-192.png',
-  });
-});
-
-// Take over as soon as a new service worker is installed, instead of waiting
-// for all tabs/PWA windows to close. Combined with registerType: 'autoUpdate'
-// in vite.config.js, this makes a new deploy activate and auto-reload the page
-// on the user's next open/refresh — no manual close-and-reopen needed.
+// Take over as soon as a new service worker is installed, instead of waiting for
+// all tabs/PWA windows to close. Combined with registerType: 'autoUpdate' in
+// vite.config.js, a new deploy activates and auto-reloads on the next open.
 self.skipWaiting();
 clientsClaim();
 
@@ -47,3 +26,36 @@ registerRoute(
   ({ url }) => url.hostname.endsWith('script.google.com'),
   new NetworkFirst({ cacheName: 'api-cache', networkTimeoutSeconds: 5 })
 );
+
+// ─── FCM background messages (best-effort) ────────────────────────────────────
+// Config comes from VITE_FCM_* env vars, inlined at build time (same values as
+// src/lib/fcm.js). Wrapped in try/catch so an unconfigured or unreachable
+// Firebase never breaks the core service worker above.
+try {
+  // The compat SDK version must match the firebase package in package.json.
+  importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js');
+  importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js');
+
+  firebase.initializeApp({
+    apiKey: import.meta.env.VITE_FCM_API_KEY,
+    authDomain: import.meta.env.VITE_FCM_AUTH_DOMAIN,
+    projectId: import.meta.env.VITE_FCM_PROJECT_ID,
+    storageBucket: import.meta.env.VITE_FCM_STORAGE_BUCKET,
+    messagingSenderId: import.meta.env.VITE_FCM_MESSAGING_SENDER_ID,
+    appId: import.meta.env.VITE_FCM_APP_ID,
+  });
+
+  const messaging = firebase.messaging();
+
+  messaging.onBackgroundMessage((payload) => {
+    const { title, body, icon } = payload.notification ?? {};
+    self.registration.showNotification(title ?? 'Chores', {
+      body: body ?? '',
+      icon: icon ?? '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
+    });
+  });
+} catch (e) {
+  // FCM unavailable (missing config or network) — core SW still works.
+  console.error('[sw] FCM init skipped:', e);
+}
