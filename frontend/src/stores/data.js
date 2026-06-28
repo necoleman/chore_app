@@ -1,6 +1,7 @@
 import { writable, get } from 'svelte/store';
 import { get as apiGet, post } from '../api/client.js';
 import { showToast } from './ui.js';
+import { today } from '../lib/utils.js';
 
 export const assignments = writable([]);
 export const people = writable([]);
@@ -130,7 +131,7 @@ export async function reassignAssignment(assignment_id, person_id, admin_person_
 export async function bumpAssignment(assignment_id, due_date, admin_person_id) {
   const prev = getAssignment(assignment_id);
   // If bumped to a future date, remove from today's view optimistically.
-  const todayISO = new Date().toISOString().slice(0, 10);
+  const todayISO = today();
   if (due_date !== todayISO) {
     assignments.update((list) => list.filter((a) => a.assignment_id !== assignment_id));
   } else {

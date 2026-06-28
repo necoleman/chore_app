@@ -4,10 +4,10 @@
   import { currentUser } from '../stores/user.js';
   import ChoreCard from '../components/ChoreCard.svelte';
   import NeedsReviewSection from '../components/NeedsReviewSection.svelte';
-  import { relativeTime } from '../lib/utils.js';
+  import { relativeTime, today } from '../lib/utils.js';
 
   $: isAdmin = $currentUser?.is_admin;
-  $: todayStr = new Date().toISOString().slice(0, 10);
+  $: todayStr = today();
 
   // Use startsWith so both "2026-06-26" and "2026-06-26T00:00:00" match.
   $: todayAssignments = $assignments.filter((a) => a.due_date?.startsWith(todayStr));

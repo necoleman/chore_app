@@ -1,5 +1,13 @@
 export function formatDate(date) {
-  return date.toISOString().slice(0, 10);
+  // Local date (YYYY-MM-DD), NOT UTC. toISOString() would return the UTC date,
+  // which rolls over to "tomorrow" in the evening for timezones behind UTC and
+  // made the Today screen filter miss every assignment. The backend writes
+  // due_date in the family's local timezone, so we must compare against the
+  // device's local date too.
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 export function today() {
