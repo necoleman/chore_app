@@ -99,19 +99,32 @@ assignment_id | chore_id | person_id | due_date | status | completed_at | assign
 
 ## Step 3 — Set Up Firebase (for push notifications)
 
+> **Two separate sets of credentials — don't mix them up.** Push notifications need both a *client* config (so the app can receive notifications and register device tokens) and a *server* config (so Apps Script can send them). They are different values, live in different places, and have different sensitivity:
+>
+> | | **Client config** (`VITE_FCM_*`) | **Server config** (service account) |
+> |---|---|---|
+> | What it is | Firebase **web app** config: `apiKey`, `authDomain`, `projectId`, `storageBucket`, `messagingSenderId`, `appId`, plus the VAPID key | Service-account key: `client_email`, `private_key`, `project_id` |
+> | Used by | The frontend (`src/lib/fcm.js`) **and** the service worker (`src/sw.js`) | The Apps Script backend (`Reminders.gs`) |
+> | Where it goes (local) | `frontend/.env.local` | n/a |
+> | Where it goes (deployed) | **GitHub repository secrets** (see Step 5) — inlined into the bundle at build time | Apps Script **Script Properties** (Step 2) |
+> | Secret? | **No** — Firebase web keys are public by design and are visible in the built JS | **Yes** — the private key must never be committed or exposed client-side |
+>
+> Sub-steps 2–3 below collect the **client** config; sub-step 4 collects the **server** config.
+
 1. Go to [console.firebase.google.com](https://console.firebase.google.com) and create a new project (or use an existing one). You do not need Firestore, Auth, or any other Firebase service — only FCM.
 
-2. In the Firebase console, go to **Project Settings** (gear icon) **→ General → Your apps → Add app → Web (`</>`)**. Register the app and copy the `firebaseConfig` object — you'll need these values for your `.env.local` file.
+2. **(Client config)** In the Firebase console, go to **Project Settings** (gear icon) **→ General → Your apps → Add app → Web (`</>`)**. Register the app and copy the `firebaseConfig` object — these map to the `VITE_FCM_*` values in your `.env.local` (Step 4), and to GitHub repository secrets for the deployed build (Step 5).
 
-3. In **Project Settings → Cloud Messaging**:
-   - Under **Web Push certificates**, click **Generate key pair** and copy the VAPID key.
+3. **(Client config)** In **Project Settings → Cloud Messaging**:
+   - Under **Web Push certificates**, click **Generate key pair** and copy the VAPID key → `VITE_FCM_VAPID_KEY`.
 
-4. Create a service account for server-side FCM (used by Apps Script):
+4. **(Server config)** Create a service account for server-side FCM (used by Apps Script):
    - Go to **Project Settings → Service accounts → Generate new private key**
    - Download the JSON file. **Do not commit this file.** Copy the values into the Apps Script Script Properties you set in Step 2:
      - `FCM_CLIENT_EMAIL` ← `client_email` from the JSON
      - `FCM_PRIVATE_KEY` ← `private_key` from the JSON (the full string including `-----BEGIN...`)
      - `FCM_PROJECT_ID` ← `project_id` from the JSON
+   - These go **only** in Script Properties — never in `.env.local` or repository secrets.
 
 ---
 
