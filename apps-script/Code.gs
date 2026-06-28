@@ -47,6 +47,7 @@ function dispatchGet(action, params) {
     case 'today':   return actionToday(params);
     case 'people':  return actionPeople(params);
     case 'chores':  return actionChores(params);
+    case 'locations': return actionLocations(params);
     case 'history': return actionHistory(params);
     default:        throw new Error('Unknown action: ' + action);
   }
@@ -62,6 +63,7 @@ function dispatchPost(action, body) {
     case 'skip':           return actionSkip(body);
     case 'claim':          return actionClaim(body);
     case 'assign':         return actionAssign(body);
+    case 'log_done':       return actionLogDone(body);
     case 'reassign':       return actionReassign(body);
     case 'bump':           return actionBump(body);
     case 'add_chore':      return actionAddChore(body);

@@ -568,6 +568,74 @@ These cases verify that users reliably receive new deployments. The app is a PWA
 
 ---
 
+## 15. Chore Location, Description & Search
+
+These cases cover the enhancements: a `location` (dropdown) and `description` on chores, a searchable Manage Chores list, add-from-search, and ad-hoc "✓ Did it" logging (credits nobody, no points). Requires a `Locations` tab in the sheet with a few rows, and `location`/`description` columns on the Chores tab.
+
+### LOC-01 — Location dropdown is populated from the Locations tab
+**Preconditions:** Logged in as admin. `Locations` tab has rows (e.g. Kitchen, Living room, Garage).
+**Steps:** Manage Chores → **+ Add** → open the Location dropdown.
+**Expected:** The dropdown lists a "(none)" option plus every row from the `Locations` tab, in sheet order.
+
+### LOC-02 — Save a chore with a location
+**Steps:** In the add form, pick a location, fill name/points, save.
+**Expected:** New Chores row has the chosen value in the `location` column. The chore row in the list shows the location as a tag.
+
+### LOC-03 — Location appears on the Today card
+**Preconditions:** A chore with a location has an assignment today (run the generator if needed).
+**Steps:** Open the Today screen.
+**Expected:** The chore card shows the location as a small tag next to the name — distinguishing e.g. "Vacuum · Kitchen" from "Vacuum · Living room".
+
+### LOC-04 — Editing preserves a legacy/unlisted location
+**Preconditions:** A chore whose `location` value is not in the current `Locations` tab (edit the sheet to create this state).
+**Steps:** Edit that chore.
+**Expected:** The dropdown still shows the current value selected (not blanked). Saving without touching it keeps the value.
+
+### DESC-01 — Save and display a description
+**Steps:** Add/edit a chore, type a description, save. Ensure it has an assignment today.
+**Expected:** `description` persists to the Chores row. The Today card shows the description as a muted secondary line.
+
+### DESC-02 — Empty description shows nothing
+**Steps:** View a chore with a blank description on the Today card.
+**Expected:** No empty line or stray element is rendered.
+
+### SR-01 — Search filters the chore list
+**Preconditions:** Several chores exist.
+**Steps:** Manage Chores → type part of a chore name in the search box.
+**Expected:** Active and Inactive lists filter live to matches. Clearing the box restores the full lists.
+
+### SR-02 — Search matches location and description
+**Steps:** Search a term that appears only in a chore's location, then one only in a description.
+**Expected:** Matching chores appear in both cases (search covers name + location + description, case-insensitive).
+
+### SR-03 — Add-from-search when nothing matches
+**Steps:** Search a term with no matches (e.g. "Reorganize closet").
+**Expected:** A "No chores match …" message and an **Add "Reorganize closet"** button appear. Tapping it opens the add form with the name prefilled.
+
+### DID-01 — "✓ Did it" logs a done row with no credit
+**Preconditions:** A chore exists that has no assignment today.
+**Steps:** Manage Chores → tap **✓ Did it** on that chore.
+**Expected:** Success toast. A new `Assignments` row appears with `status=done`, **empty `person_id`**, **empty `points_awarded`**, `assigned_by=manual`, today's `due_date`.
+
+### DID-02 — No points are awarded by "✓ Did it"
+**Steps:** Note any person's `points_total`. Tap **✓ Did it**. Re-check.
+**Expected:** No one's `points_total` changes. The leaderboard is unaffected.
+
+### DID-03 — Ad-hoc done shows in History
+**Steps:** After DID-01, open the History screen.
+**Expected:** The chore appears as done for today with no person name shown (and no points), rendered without errors.
+
+### DID-04 — "✓ Did it" is admin-only surface
+**Preconditions:** Non-admin account.
+**Steps:** Confirm the Manage Chores screen isn't in the nav for non-admins.
+**Expected:** Non-admins have no access to the search list or the "✓ Did it" control (same gating as the rest of chore admin).
+
+### REG-01 — Existing add/edit/complete unaffected
+**Steps:** Create a chore without a location/description; complete a normal assignment; approve one.
+**Expected:** All existing flows work unchanged; blank location/description cause no errors anywhere.
+
+---
+
 ## Summary Table
 
 | Area | Total Cases | Security Cases |
@@ -586,7 +654,8 @@ These cases verify that users reliably receive new deployments. The app is a PWA
 | Security/Pen Tests | 10 | 10 |
 | Responsive & Safe-Area Layout | 10 | — |
 | App Updates (Service Worker) | 5 | — |
-| **Total** | **98** | **10** |
+| Chore Location, Description & Search | 14 | — |
+| **Total** | **112** | **10** |
 
 ---
 
@@ -694,3 +763,17 @@ Copy the table below into a spreadsheet. Fill in **Tester**, **Date**, **Result*
 | UP-03 | App Updates | Update while the app is open | | | | |
 | UP-04 | App Updates | Data freshness independent of shell version | | | | |
 | UP-05 | App Updates | Offline still loads the cached shell | | | | |
+| LOC-01 | Location/Search | Location dropdown populated from Locations tab | | | | |
+| LOC-02 | Location/Search | Save a chore with a location | | | | |
+| LOC-03 | Location/Search | Location appears on the Today card | | | | |
+| LOC-04 | Location/Search | Editing preserves a legacy/unlisted location | | | | |
+| DESC-01 | Location/Search | Save and display a description | | | | |
+| DESC-02 | Location/Search | Empty description shows nothing | | | | |
+| SR-01 | Location/Search | Search filters the chore list | | | | |
+| SR-02 | Location/Search | Search matches location and description | | | | |
+| SR-03 | Location/Search | Add-from-search when nothing matches | | | | |
+| DID-01 | Location/Search | "✓ Did it" logs a done row with no credit | | | | |
+| DID-02 | Location/Search | No points awarded by "✓ Did it" | | | | |
+| DID-03 | Location/Search | Ad-hoc done shows in History | | | | |
+| DID-04 | Location/Search | "✓ Did it" is admin-only surface | | | | |
+| REG-01 | Location/Search | Existing add/edit/complete unaffected | | | | |

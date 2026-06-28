@@ -1,24 +1,30 @@
 <script>
   import { onMount } from 'svelte';
   import { get as apiGet } from '../api/client.js';
+  import { logChoreDone } from '../stores/data.js';
   import ChoreForm from '../components/ChoreForm.svelte';
 
   let chores = [];
   let people = [];
+  let locations = [];
   let loading = true;
   let error = null;
   let editingChore = null;   // null = not editing, object = edit existing
   let showAddForm = false;
+  let addInitialName = '';    // prefill the new-chore form (from search)
+  let searchTerm = '';
 
   async function load() {
     loading = true;
     try {
-      const [choreData, peopleData] = await Promise.all([
+      const [choreData, peopleData, locationData] = await Promise.all([
         apiGet('chores'),
         apiGet('people'),
+        apiGet('locations'),
       ]);
       chores = choreData.chores ?? [];
       people = peopleData.people ?? [];
+      locations = locationData.locations ?? [];
     } catch (e) {
       error = 'Could not load chores';
     } finally {
@@ -28,12 +34,34 @@
 
   onMount(load);
 
-  $: activeChores = chores.filter((c) => c.active === true || c.active === 'TRUE');
-  $: inactiveChores = chores.filter((c) => c.active !== true && c.active !== 'TRUE');
+  function matchesSearch(c) {
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      (c.name || '').toLowerCase().includes(q) ||
+      (c.location || '').toLowerCase().includes(q) ||
+      (c.description || '').toLowerCase().includes(q)
+    );
+  }
+
+  $: activeChores = chores.filter(
+    (c) => (c.active === true || c.active === 'TRUE') && matchesSearch(c)
+  );
+  $: inactiveChores = chores.filter(
+    (c) => c.active !== true && c.active !== 'TRUE' && matchesSearch(c)
+  );
+  $: noResults =
+    searchTerm.trim() !== '' && activeChores.length === 0 && inactiveChores.length === 0;
+
+  function openAdd(name = '') {
+    addInitialName = name;
+    showAddForm = true;
+  }
 
   function afterSave() {
     editingChore = null;
     showAddForm = false;
+    addInitialName = '';
     load();
   }
 </script>
@@ -41,7 +69,7 @@
 <div class="screen">
   <header class="header">
     <h1 class="title">Manage Chores</h1>
-    <button class="add-btn" on:click={() => (showAddForm = true)}>+ Add</button>
+    <button class="add-btn" on:click={() => openAdd()}>+ Add</button>
   </header>
 
   {#if loading}
@@ -49,24 +77,41 @@
   {:else if error}
     <p class="error-msg">{error}</p>
   {:else}
-    <section class="section">
-      <h2 class="section-title">Active ({activeChores.length})</h2>
-      {#each activeChores as chore (chore.chore_id)}
-        <div class="chore-row">
-          <div class="chore-info">
-            <span class="chore-name">{chore.name}</span>
-            <div class="chore-meta">
-              <span class="tag">{chore.frequency}</span>
-              <span class="tag">{chore.points} pts</span>
-              {#if chore.requires_approval === true || chore.requires_approval === 'TRUE'}
-                <span class="tag tag--review">Needs approval</span>
-              {/if}
+    <div class="search-wrap">
+      <input
+        type="search"
+        class="search"
+        placeholder="Search chores…"
+        bind:value={searchTerm}
+      />
+    </div>
+
+    {#if activeChores.length > 0}
+      <section class="section">
+        <h2 class="section-title">Active ({activeChores.length})</h2>
+        {#each activeChores as chore (chore.chore_id)}
+          <div class="chore-row">
+            <div class="chore-info">
+              <span class="chore-name">{chore.name}</span>
+              <div class="chore-meta">
+                <span class="tag">{chore.frequency}</span>
+                <span class="tag">{chore.points} pts</span>
+                {#if chore.location}
+                  <span class="tag tag--location">{chore.location}</span>
+                {/if}
+                {#if chore.requires_approval === true || chore.requires_approval === 'TRUE'}
+                  <span class="tag tag--review">Needs approval</span>
+                {/if}
+              </div>
+            </div>
+            <div class="chore-actions">
+              <button class="did-btn" on:click={() => logChoreDone(chore.chore_id)}>✓ Did it</button>
+              <button class="edit-btn" on:click={() => (editingChore = chore)}>Edit</button>
             </div>
           </div>
-          <button class="edit-btn" on:click={() => (editingChore = chore)}>Edit</button>
-        </div>
-      {/each}
-    </section>
+        {/each}
+      </section>
+    {/if}
 
     {#if inactiveChores.length > 0}
       <section class="section">
@@ -75,11 +120,25 @@
           <div class="chore-row chore-row--inactive">
             <div class="chore-info">
               <span class="chore-name">{chore.name}</span>
+              {#if chore.location}
+                <div class="chore-meta">
+                  <span class="tag tag--location">{chore.location}</span>
+                </div>
+              {/if}
             </div>
             <button class="edit-btn" on:click={() => (editingChore = chore)}>Edit</button>
           </div>
         {/each}
       </section>
+    {/if}
+
+    {#if noResults}
+      <div class="no-results">
+        <p class="no-results-text">No chores match “{searchTerm}”.</p>
+        <button class="add-btn" on:click={() => openAdd(searchTerm.trim())}>
+          + Add “{searchTerm.trim()}”
+        </button>
+      </div>
     {/if}
   {/if}
 </div>
@@ -87,8 +146,10 @@
 {#if showAddForm}
   <ChoreForm
     {people}
+    {locations}
+    initialName={addInitialName}
     onSave={afterSave}
-    onClose={() => (showAddForm = false)}
+    onClose={() => { showAddForm = false; addInitialName = ''; }}
   />
 {/if}
 
@@ -96,6 +157,7 @@
   <ChoreForm
     chore={editingChore}
     {people}
+    {locations}
     onSave={afterSave}
     onClose={() => (editingChore = null)}
   />
@@ -126,6 +188,16 @@
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
+  }
+
+  .search-wrap { padding: 4px 16px 8px; }
+
+  .search {
+    width: 100%;
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 14px;
   }
 
   .section { padding: 0 16px; margin-bottom: 8px; }
@@ -169,6 +241,9 @@
   }
 
   .tag--review { background: #fef3c7; color: #92400e; }
+  .tag--location { background: #e0e7ff; color: #3730a3; }
+
+  .chore-actions { display: flex; flex-direction: column; gap: 6px; }
 
   .edit-btn {
     background: none;
@@ -180,6 +255,29 @@
     cursor: pointer;
     color: #374151;
   }
+
+  .did-btn {
+    background: #dcfce7;
+    border: 1px solid #bbf7d0;
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    color: #16a34a;
+    white-space: nowrap;
+  }
+
+  .no-results {
+    text-align: center;
+    padding: 24px 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .no-results-text { color: #6b7280; font-size: 14px; }
 
   .loading, .error-msg {
     text-align: center;

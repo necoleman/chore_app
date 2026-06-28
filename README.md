@@ -17,7 +17,7 @@ A lightweight PWA for tracking household chores, backed by Google Sheets and Goo
 
 1. Go to [sheets.google.com](https://sheets.google.com) and create a new spreadsheet. Name it **Family Chores**.
 
-2. Create three tabs named exactly: `People`, `Chores`, `Assignments`.
+2. Create four tabs named exactly: `People`, `Chores`, `Assignments`, `Locations`.
 
 3. Add these header rows (row 1) to each tab:
 
@@ -28,8 +28,14 @@ person_id | name | color | fcm_token | points_total | streak_current | streak_be
 
 **Chores**
 ```
-chore_id | name | points | frequency | custom_days | monthly_day | interval_days | last_generated_date | default_assignee | requires_approval | active
+chore_id | name | location | description | points | frequency | custom_days | monthly_day | interval_days | last_generated_date | default_assignee | requires_approval | active
 ```
+
+**Locations** (feeds the location dropdown in the chore editor — one row per allowed location)
+```
+location
+```
+Example rows: `Kitchen`, `Living room`, `Garage`, `Upstairs bath`. Add or remove rows here anytime; the change shows up in the app on the next load (no redeploy needed).
 
 **Assignments**
 ```
@@ -322,6 +328,10 @@ Required columns:
 - `active` — `TRUE`
 - `requires_approval` — `TRUE` or `FALSE`
 
+Optional columns:
+- `location` — category shown on the chore (e.g. `Kitchen`), used to tell apart same-named chores. In the in-app editor this is a dropdown fed by the `Locations` tab.
+- `description` — free-text notes about what the chore involves; shown on the chore card.
+
 Frequency-specific columns (leave blank when not applicable):
 - `weekly` → `custom_days`: weekday number 0–6 (0 = Sunday)
 - `custom` → `custom_days`: comma-separated day names, e.g. `monday,wednesday,friday`
@@ -329,6 +339,8 @@ Frequency-specific columns (leave blank when not applicable):
 - `interval` → `interval_days`: number of days between occurrences, e.g. `90`
 
 The nightly generator runs at 12:01am and creates `Assignments` rows for any chore due that day. To test it immediately, run `runNightlyGenerator` manually from the Apps Script editor.
+
+**Searching and ad-hoc logging:** The Manage Chores screen has a search box (matches name, location, and description). If a search finds nothing, an **Add "…"** button lets you create it prefilled — handy for avoiding duplicates. Each chore row also has a **✓ Did it** button that records the chore as done right now (shows in History) **without** awarding points to anyone — for chores you did that weren't assigned.
 
 ---
 

@@ -5,6 +5,8 @@
 
   export let chore = null; // null = create mode
   export let people = [];
+  export let locations = [];
+  export let initialName = ''; // prefill the name in create mode (from search)
   export let onSave;
   export let onClose;
 
@@ -13,7 +15,9 @@
   let form = chore
     ? { ...chore }
     : {
-        name: '',
+        name: initialName,
+        location: '',
+        description: '',
         points: 1,
         frequency: 'daily',
         custom_days: '',
@@ -23,6 +27,13 @@
         requires_approval: false,
         active: true,
       };
+
+  // Show the chore's current location even if it's no longer in the managed list
+  // (e.g. a legacy value), so editing never silently drops it.
+  $: locationOptions =
+    form.location && !locations.some((l) => l.location === form.location)
+      ? [{ location: form.location }, ...locations]
+      : locations;
 
   let saving = false;
 
@@ -67,6 +78,26 @@
       <label class="field">
         <span class="label">Name</span>
         <input type="text" bind:value={form.name} placeholder="Take out trash" class="input" />
+      </label>
+
+      <label class="field">
+        <span class="label">Location</span>
+        <select bind:value={form.location} class="input">
+          <option value="">(none)</option>
+          {#each locationOptions as loc (loc.location)}
+            <option value={loc.location}>{loc.location}</option>
+          {/each}
+        </select>
+      </label>
+
+      <label class="field">
+        <span class="label">Description</span>
+        <textarea
+          bind:value={form.description}
+          rows="3"
+          placeholder="What does this chore involve?"
+          class="input textarea"
+        ></textarea>
       </label>
 
       <label class="field">
@@ -223,6 +254,12 @@
   }
 
   .input--sm { width: 100px; }
+
+  .textarea {
+    resize: vertical;
+    font-family: inherit;
+    line-height: 1.4;
+  }
 
   .day-grid {
     display: flex;

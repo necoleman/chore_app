@@ -92,6 +92,19 @@ export async function claimAssignment(assignment_id, person_id) {
   }
 }
 
+// Ad-hoc "this chore got done" log from the Manage Chores list. Credits nobody
+// and awards no points — it just records a done row. Refresh afterward so it
+// shows up in History (the new row isn't in the store yet).
+export async function logChoreDone(chore_id) {
+  try {
+    await post('log_done', { chore_id });
+    showToast('Logged as done', 'success');
+    await refresh();
+  } catch (e) {
+    showToast('Could not log — try again');
+  }
+}
+
 export async function approveAssignment(assignment_id, admin_person_id) {
   const prev = getAssignment(assignment_id);
   updateAssignment(assignment_id, { status: 'done', _optimistic: true });

@@ -54,7 +54,16 @@
   <CheckAnimation status={assignment.status} size={32} />
 
   <div class="card-body">
-    <span class="chore-name">{assignment.chore_name}</span>
+    <div class="chore-name-row">
+      <span class="chore-name">{assignment.chore_name}</span>
+      {#if assignment.location}
+        <span class="location-tag">{assignment.location}</span>
+      {/if}
+    </div>
+
+    {#if assignment.description}
+      <span class="chore-description">{assignment.description}</span>
+    {/if}
 
     {#if isPending && isMine}
       <PendingReviewBadge />
@@ -149,10 +158,32 @@
     gap: 4px;
   }
 
+  .chore-name-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
   .chore-name {
     font-size: 15px;
     font-weight: 600;
     color: #111827;
+  }
+
+  .location-tag {
+    font-size: 11px;
+    font-weight: 500;
+    background: #e0e7ff;
+    color: #3730a3;
+    padding: 1px 7px;
+    border-radius: 8px;
+  }
+
+  .chore-description {
+    font-size: 12px;
+    color: #6b7280;
+    line-height: 1.35;
   }
 
   .rejection-note {
