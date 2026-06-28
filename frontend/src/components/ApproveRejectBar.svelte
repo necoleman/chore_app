@@ -1,4 +1,6 @@
 <script>
+  import { portal } from '../lib/portal.js';
+
   export let assignment;
   export let onApprove;
   export let onReject;
@@ -23,7 +25,7 @@
 </div>
 
 {#if showRejectModal}
-  <div class="modal-backdrop" on:click|self={() => (showRejectModal = false)}>
+  <div class="modal-backdrop" use:portal on:click|self={() => (showRejectModal = false)}>
     <div class="modal">
       <p class="modal-title">Send back to {assignment.person_name}?</p>
       <input

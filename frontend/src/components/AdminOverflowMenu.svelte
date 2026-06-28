@@ -3,6 +3,7 @@
   import { currentUser } from '../stores/user.js';
   import { reassignAssignment, bumpAssignment } from '../stores/data.js';
   import PersonPicker from './PersonPicker.svelte';
+  import { portal } from '../lib/portal.js';
 
   export let assignment;
 
@@ -56,7 +57,7 @@
 {/if}
 
 {#if showBump}
-  <div class="bump-backdrop" on:click|self={() => (showBump = false)}>
+  <div class="bump-backdrop" use:portal on:click|self={() => (showBump = false)}>
     <div class="bump-sheet">
       <div class="sheet-handle"></div>
       <h2 class="sheet-title">Move to date</h2>

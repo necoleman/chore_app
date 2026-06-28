@@ -1,6 +1,7 @@
 <script>
   import { post } from '../api/client.js';
   import { showToast } from '../stores/ui.js';
+  import { portal } from '../lib/portal.js';
 
   export let chore = null; // null = create mode
   export let people = [];
@@ -57,7 +58,7 @@
   }
 </script>
 
-<div class="backdrop" on:click|self={onClose}>
+<div class="backdrop" use:portal on:click|self={onClose}>
   <div class="sheet">
     <div class="sheet-handle"></div>
     <h2 class="sheet-title">{chore ? 'Edit Chore' : 'New Chore'}</h2>

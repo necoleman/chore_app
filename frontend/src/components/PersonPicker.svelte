@@ -1,5 +1,6 @@
 <script>
   import { initials, contrastColor } from '../lib/utils.js';
+  import { portal } from '../lib/portal.js';
   export let people = [];
   export let selected = null;
   export let onSelect;
@@ -7,7 +8,7 @@
   export let title = 'Select person';
 </script>
 
-<div class="backdrop" on:click|self={onClose}>
+<div class="backdrop" use:portal on:click|self={onClose}>
   <div class="sheet">
     <div class="sheet-handle"></div>
     <h2 class="sheet-title">{title}</h2>
