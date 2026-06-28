@@ -95,13 +95,21 @@ export async function skipAssignment(assignment_id) {
 
 export async function claimAssignment(assignment_id, person_id) {
   const prev = getAssignment(assignment_id);
-  updateAssignment(assignment_id, { person_id, _optimistic: true });
+  // Set the person's name + color optimistically too, otherwise the avatar
+  // renders as a blank gray circle until the next refresh.
+  const person = get(people).find((p) => p.person_id === person_id);
+  updateAssignment(assignment_id, {
+    person_id,
+    person_name: person?.name ?? null,
+    person_color: person?.color ?? null,
+    _optimistic: true,
+  });
   try {
     await post('claim', { assignment_id, person_id });
     updateAssignment(assignment_id, { _optimistic: false });
   } catch (e) {
     rollbackAssignment(assignment_id, prev);
-    showToast('Could not claim — try again');
+    showToast(e.message || 'Could not claim — try again');
   }
 }
 

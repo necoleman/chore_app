@@ -289,10 +289,12 @@ function actionSkip(body) {
 function actionClaim(body) {
   var assignmentId = body.assignment_id;
   var personId = body.person_id;
-  updateRow('Assignments', 'assignment_id', assignmentId, {
+  if (!personId) throw new Error('person_id required');
+  var found = updateRow('Assignments', 'assignment_id', assignmentId, {
     person_id: personId,
     assigned_by: 'manual',
   });
+  if (!found) throw new Error('Assignment not found: ' + assignmentId);
   invalidateCache('Assignments');
   return { success: true };
 }

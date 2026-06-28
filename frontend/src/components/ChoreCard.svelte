@@ -37,10 +37,11 @@
   $: showApproveReject = showAdminControls && isPending;
   $: isInteractive = !readonly && (isOpen || isRejected) && (isMine || isUnassigned);
 
-  // Uncheck: the assignee (or an admin) can undo their own done/pending chore,
-  // unless it has been approved (done with a reviewer recorded).
+  // Uncheck: the assignee (or an admin) can undo a done/pending chore, unless
+  // it has been approved (done with a reviewer recorded). Note: we intentionally
+  // do NOT gate on `readonly` here — admins view family members' cards as
+  // readonly (can't tap-to-complete them) but should still be able to undo them.
   $: canUncheck =
-    !readonly &&
     (isMine || showAdminControls) &&
     ((isDone && !assignment.reviewed_by) || isPending);
 

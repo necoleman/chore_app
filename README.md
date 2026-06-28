@@ -368,6 +368,13 @@ The nightly generator runs at 12:01am and creates `Assignments` rows for any cho
 
 **Updating the backend:** Edit the `.gs` files, paste the changes into the Apps Script editor, and publish a new deployment version. The URL stays the same.
 
+> **Optional — automate backend deploys with `clasp` (not currently set up).** You can mirror the frontend's push-to-deploy flow for the Apps Script code using Google's [`clasp`](https://github.com/google/clasp) CLI in a GitHub Action. Sketch:
+> 1. Enable the Apps Script API (script.google.com → settings), run `clasp login` locally, and grab the **Script ID** (Project Settings) and the **existing Deployment ID** (`clasp deployments`).
+> 2. Add `.clasp.json` (`{ "scriptId": "...", "rootDir": "apps-script" }`) and a `deploy-backend.yml` workflow (triggered on `apps-script/**`) that runs `clasp push -f` then `clasp deploy --deploymentId <ID> ...`.
+> 3. Store `~/.clasprc.json` as the `CLASPRC_JSON` repo secret and the deployment ID as `CLASP_DEPLOYMENT_ID`.
+>
+> **Critical gotchas:** always re-deploy the **existing** deployment ID (a bare `clasp deploy` mints a new `/exec` URL and breaks `VITE_API_URL`); and if the Google OAuth consent screen is in "Testing" mode the refresh token **expires after 7 days** (publish the consent screen or use `clasp login --creds`). Treat `CLASPRC_JSON` as a sensitive secret. Because the backend changes rarely and this auth needs occasional upkeep, manual redeploys are intentionally kept as the default.
+
 **Updating the frontend:** Push to `main`. The GitHub Action redeploys automatically.
 
 **How users get updates:** The service worker calls `skipWaiting()` + `clientsClaim()` and the PWA registers with `registerType: 'autoUpdate'`, so a new deploy activates and the page reloads itself on the user's next open/refresh — no manual reinstall needed. To confirm which build is live, check the small version marker at the bottom of any screen (`v<version> · <build time UTC>`); it's stamped from `frontend/package.json` + build time. Bump the version in `package.json` for each release (and run `npm install` so `package-lock.json` stays in sync — the deploy uses `npm ci`, which fails if they drift).
