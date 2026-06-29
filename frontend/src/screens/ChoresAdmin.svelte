@@ -2,6 +2,9 @@
   import { onMount } from 'svelte';
   import { get as apiGet } from '../api/client.js';
   import ChoreForm from '../components/ChoreForm.svelte';
+  import CollapsibleDescription from '../components/CollapsibleDescription.svelte';
+  import { today } from '../lib/utils.js';
+  import { nextDueLabel, daysUntilDue } from '../lib/dueDates.js';
 
   let chores = [];
   let people = [];
@@ -12,6 +15,9 @@
   let showAddForm = false;
   let addInitialName = '';    // prefill the new-chore form (from search)
   let searchTerm = '';
+  let sortMode = 'default';   // default | location | assignee | periodicity | countdown
+
+  const FREQ_ORDER = { daily: 0, weekly: 1, custom: 2, monthly: 3, interval: 4, once: 5 };
 
   async function load() {
     loading = true;
@@ -54,10 +60,36 @@
 
   $: peopleById = Object.fromEntries(people.map((p) => [p.person_id, p]));
   $: assigneeName = (id) => (id ? (peopleById[id]?.name ?? id) : null);
+  $: todayStr = today();
+
+  // Sort comparator for the active list (#15). `peopleById`/`todayStr`/`sortMode`
+  // are referenced here so Svelte re-sorts when they change.
+  function sortChores(list, mode, peopleById, todayStr) {
+    if (mode === 'default') return list;
+    const arr = [...list];
+    if (mode === 'location') {
+      arr.sort((a, b) => (a.location || '~').localeCompare(b.location || '~'));
+    } else if (mode === 'assignee') {
+      // Unclaimed (no default assignee) first, then by assignee name.
+      arr.sort((a, b) => {
+        const an = a.default_assignee ? (peopleById[a.default_assignee]?.name ?? a.default_assignee) : '';
+        const bn = b.default_assignee ? (peopleById[b.default_assignee]?.name ?? b.default_assignee) : '';
+        if (!an && bn) return -1;
+        if (an && !bn) return 1;
+        return an.localeCompare(bn);
+      });
+    } else if (mode === 'periodicity') {
+      arr.sort((a, b) => (FREQ_ORDER[a.frequency] ?? 9) - (FREQ_ORDER[b.frequency] ?? 9));
+    } else if (mode === 'countdown') {
+      arr.sort((a, b) => daysUntilDue(a, todayStr) - daysUntilDue(b, todayStr));
+    }
+    return arr;
+  }
 
   $: q = searchTerm.trim().toLowerCase();
-  $: activeChores = chores.filter(
-    (c) => (c.active === true || c.active === 'TRUE') && matchesSearch(c, q, peopleById)
+  $: activeChores = sortChores(
+    chores.filter((c) => (c.active === true || c.active === 'TRUE') && matchesSearch(c, q, peopleById)),
+    sortMode, peopleById, todayStr
   );
   $: inactiveChores = chores.filter(
     (c) => c.active !== true && c.active !== 'TRUE' && matchesSearch(c, q, peopleById)
@@ -96,6 +128,13 @@
         placeholder="Search name, location, assignee…"
         bind:value={searchTerm}
       />
+      <select class="sort" bind:value={sortMode} aria-label="Sort chores">
+        <option value="default">Sort: Default</option>
+        <option value="location">Sort: Location</option>
+        <option value="assignee">Sort: Assignee</option>
+        <option value="periodicity">Sort: Periodicity</option>
+        <option value="countdown">Sort: Next due</option>
+      </select>
     </div>
 
     {#if activeChores.length > 0}
@@ -116,10 +155,14 @@
                 {:else}
                   <span class="tag tag--unclaimed">Unclaimed</span>
                 {/if}
+                {#if nextDueLabel(chore, todayStr)}
+                  <span class="tag tag--next">Next: {nextDueLabel(chore, todayStr)}</span>
+                {/if}
                 {#if chore.requires_approval === true || chore.requires_approval === 'TRUE'}
                   <span class="tag tag--review">Needs approval</span>
                 {/if}
               </div>
+              <CollapsibleDescription text={chore.description} />
             </div>
             <button class="edit-btn" on:click={() => (editingChore = chore)}>Edit</button>
           </div>
@@ -204,14 +247,24 @@
     cursor: pointer;
   }
 
-  .search-wrap { padding: 4px 16px 8px; }
+  .search-wrap { padding: 4px 16px 8px; display: flex; gap: 8px; }
 
   .search {
-    width: 100%;
+    flex: 1;
+    min-width: 0;
     border: 1px solid #d1d5db;
     border-radius: 10px;
     padding: 10px 12px;
     font-size: 14px;
+  }
+
+  .sort {
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
+    padding: 10px 8px;
+    font-size: 13px;
+    background: #fff;
+    flex-shrink: 0;
   }
 
   .section { padding: 0 16px; margin-bottom: 8px; }
@@ -256,6 +309,7 @@
 
   .tag--review { background: #fef3c7; color: #92400e; }
   .tag--location { background: #e0e7ff; color: #3730a3; }
+  .tag--next { background: #ecfeff; color: #0e7490; }
   .tag--assignee { background: #dcfce7; color: #166534; }
   .tag--unclaimed { background: #f3f4f6; color: #6b7280; font-style: italic; }
 

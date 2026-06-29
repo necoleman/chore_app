@@ -24,6 +24,7 @@
         monthly_day: '',
         interval_days: '',
         once_date: '',
+        start_date: '',
         default_assignee: '',
         requires_approval: false,
         active: true,
@@ -161,6 +162,13 @@
         <label class="field">
           <span class="label">Date</span>
           <input type="date" bind:value={form.once_date} class="input input--sm" />
+        </label>
+      {/if}
+
+      {#if form.frequency !== 'once'}
+        <label class="field">
+          <span class="label">First due date (optional)</span>
+          <input type="date" bind:value={form.start_date} class="input input--sm" />
         </label>
       {/if}
 

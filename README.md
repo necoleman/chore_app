@@ -28,7 +28,7 @@ person_id | name | color | fcm_token | points_total | streak_current | streak_be
 
 **Chores**
 ```
-chore_id | name | location | description | points | frequency | custom_days | monthly_day | interval_days | once_date | last_generated_date | default_assignee | requires_approval | active
+chore_id | name | location | description | points | frequency | custom_days | monthly_day | interval_days | once_date | start_date | last_generated_date | default_assignee | requires_approval | active
 ```
 
 **Locations** (feeds the location dropdown in the chore editor — one row per allowed location)
@@ -291,6 +291,46 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 
 **`Invoke-RestMethod` vs `curl`.** PowerShell 5.1 ships an alias `curl` that points to `Invoke-RestMethod`, not the real curl binary. If you have Git for Windows installed, real curl is at `C:\Program Files\Git\mingw64\bin\curl.exe`. The PowerShell cmdlet works fine for this project; just be aware they are different things.
 
+### Running the automated tests
+
+The project has a local test suite — fast unit tests (Vitest) plus an end-to-end suite (Playwright with a mocked backend). Run it before every deploy. All commands are from `frontend/`:
+
+```powershell
+npm test            # all unit tests (frontend logic + Apps Script harness)
+npm run test:watch  # unit tests in watch mode while developing
+npm run test:e2e    # Playwright E2E (auto-starts the dev server, mocks the API)
+npm run test:all    # unit + E2E
+```
+
+First-time setup (once): `npm install`, then `npx playwright install chromium` to download the browser.
+
+What's covered:
+- **Unit (Vitest):** `src/lib/*` pure logic (date/`formatDate`, `choreSelectors` filtering/sort/state), the `stores/data.js` optimistic mutations, and the **Apps Script backend** logic (`isDueToday`, sheet utils, every action transition, the generator) via an in-memory Google-services harness in `tests/apps-script/`.
+- **E2E (Playwright):** real user flows on desktop + mobile emulation against a mocked Apps Script endpoint — onboarding, complete-via-circle, the overflow menu, sent-back feedback, claim persistence, overdue, and Manage Chores. The backend is mocked, so E2E never touches the live Sheet.
+
+**Pre-deploy gate (recommended):**
+```powershell
+npm run build && npm test && npm run test:e2e
+```
+Push the frontend (and redeploy Apps Script if `.gs` changed) only when all three are green. Push notifications (FCM) are not automated — keep checking those on a real device.
+
+> **Optional — run the gate in CI (not currently set up).** To enforce the same gate automatically, add a `test` job to [.github/workflows/deploy.yml](.github/workflows/deploy.yml) before the deploy job and make the deploy job `needs: test`:
+> ```yaml
+> test:
+>   runs-on: ubuntu-latest
+>   defaults: { run: { working-directory: frontend } }
+>   steps:
+>     - uses: actions/checkout@v4
+>     - uses: actions/setup-node@v4
+>       with: { node-version: '20', cache: 'npm', cache-dependency-path: frontend/package-lock.json }
+>     - run: npm ci
+>     - run: npm run build
+>     - run: npm test
+>     - run: npx playwright install --with-deps chromium
+>     - run: npm run test:e2e
+> ```
+> Then add `needs: test` to the `build-and-deploy` job so a red test blocks deployment. Left manual/local for now to match the current workflow.
+
 ### Switching users / "logging out" during testing
 
 There is intentionally **no log-out button** in the app — each install just remembers who you are. The logged-in person is stored in a single `localStorage` key, **`chore_current_user`**. Clearing it sends you back to the "Who are you?" picker, which is the quickest way to test as a different family member. (The store already has a `logout()` helper in `frontend/src/stores/user.js`; it just isn't wired to any UI.)
@@ -359,7 +399,8 @@ Required columns:
 
 Optional columns:
 - `location` — category shown on the chore (e.g. `Kitchen`), used to tell apart same-named chores. In the in-app editor this is a dropdown fed by the `Locations` tab.
-- `description` — free-text notes about what the chore involves; shown on the chore card.
+- `description` — free-text notes about what the chore involves; shown on the chore card (collapsible if long).
+- `start_date` — first date the chore is due (`YYYY-MM-DD`). Blank = starts immediately. The generator won't create assignments before this date. Set it via the chore editor's "First due date" field (e.g. to schedule a monthly/interval chore's first occurrence).
 
 Frequency-specific columns (leave blank when not applicable):
 - `weekly` → `custom_days`: weekday number 0–6 (0 = Sunday)
@@ -373,6 +414,10 @@ The nightly generator runs at 12:01am and creates `Assignments` rows for any cho
 **Today screen behavior:** Finished chores (done/skipped) gray out and sort to the bottom of each section; pending-approval chores show in amber (the assignee sees their own as "Waiting for review"). Unfinished chores from previous days stay on Today flagged **Overdue** (sorted to the top) until they're completed or an admin bumps/skips them — there's no age cutoff, so use bump/skip to clear a backlog. A completed chore can be **unchecked** (undo) by the assignee or an admin via the card's "Undo" button, which reverts it to open and removes any awarded points — *except* chores that a parent has already **approved**, which cannot be unchecked.
 
 **Searching chores:** The Manage Chores screen has a search box (matches name, location, description, and assignee). If a search finds nothing, an **Add "…"** button lets you create it prefilled — handy for avoiding duplicates. Each chore row has an **Edit** button.
+
+**Manage Chores extras:** Each row shows a **"Next: …"** tag for non-daily chores (a weekday name for weekly/custom, e.g. "Tuesday", or a date for monthly/interval/once; daily shows nothing). A **Sort** dropdown reorders by Default, Location, Assignee (unclaimed first), Periodicity, or Next due (soonest first). Long descriptions collapse to one line with a carat to expand.
+
+**Reassign / make unclaimed:** On the Today screen, a chore's three-dot menu can **Reassign** it to another person, **Move date**, or **Make unclaimed** (send it back to the "Available to Claim" bucket without picking a new person).
 
 ---
 

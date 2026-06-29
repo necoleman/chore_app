@@ -5,58 +5,18 @@
   import ChoreCard from '../components/ChoreCard.svelte';
   import NeedsReviewSection from '../components/NeedsReviewSection.svelte';
   import { relativeTime, today } from '../lib/utils.js';
+  import { splitTodaySections } from '../lib/choreSelectors.js';
 
   $: isAdmin = $currentUser?.is_admin;
   $: todayStr = today();
 
-  // Finished items (done/skipped) show only for today; unfinished items
-  // (open/pending/rejected) include overdue (due in the past) but never future.
-  $: todayAssignments = $assignments.filter((a) => {
-    const d = a.due_date?.slice(0, 10);
-    if (!d) return false;
-    if (a.status === 'done' || a.status === 'skipped') return d === todayStr;
-    return d <= todayStr;
-  });
-
-  // Sort unfinished above finished; among unfinished, overdue first. Stable.
-  function rank(a) {
-    const finished = a.status === 'done' || a.status === 'skipped';
-    if (finished) return 2;
-    return a.due_date?.slice(0, 10) < todayStr ? 0 : 1;
-  }
-  const byStatus = (x, y) => rank(x) - rank(y);
-
-  $: pendingReview = isAdmin
-    ? todayAssignments.filter((a) => a.status === 'pending_review')
-    : [];
-
-  // Include the user's own pending_review chores so they see an amber
-  // "Waiting for review" card (instead of it vanishing until reviewed).
-  $: myAssignments = todayAssignments
-    .filter((a) => a.person_id === $currentUser?.person_id)
-    .sort(byStatus);
-
-  $: familyAssignments = todayAssignments.filter(
-    (a) =>
-      a.person_id &&
-      a.person_id !== $currentUser?.person_id &&
-      a.status !== 'pending_review'
-  );
-
-  // Group family assignments by person
-  $: familyByPerson = familyAssignments.reduce((acc, a) => {
-    const key = a.person_id;
-    if (!acc[key]) acc[key] = { name: a.person_name, color: a.person_color, items: [] };
-    acc[key].items.push(a);
-    return acc;
-  }, {});
-
-  $: familyGroups = Object.values(familyByPerson).map((g) => ({
-    ...g,
-    items: [...g.items].sort(byStatus),
-  }));
-
-  $: unassigned = todayAssignments.filter((a) => !a.person_id && a.status === 'open');
+  // All Today-screen filtering/sorting/grouping lives in the pure selector
+  // (unit-tested in lib/choreSelectors.test.js).
+  $: sections = splitTodaySections($assignments, $currentUser, isAdmin, todayStr);
+  $: pendingReview = sections.pendingReview;
+  $: myAssignments = sections.mine;
+  $: familyGroups = sections.familyGroups;
+  $: unassigned = sections.unassigned;
 
   onMount(() => startPolling());
   onDestroy(() => stopPolling());

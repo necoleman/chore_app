@@ -13,7 +13,9 @@
   import PendingReviewBadge from './PendingReviewBadge.svelte';
   import ApproveRejectBar from './ApproveRejectBar.svelte';
   import AdminOverflowMenu from './AdminOverflowMenu.svelte';
+  import CollapsibleDescription from './CollapsibleDescription.svelte';
   import { initials, contrastColor, today } from '../lib/utils.js';
+  import { choreState, reviewerName as resolveReviewerName } from '../lib/choreSelectors.js';
   import { portal } from '../lib/portal.js';
 
   export let assignment;
@@ -22,37 +24,17 @@
 
   let showUncheckConfirm = false;
 
-  $: isOpen = assignment.status === 'open';
-  $: isPending = assignment.status === 'pending_review';
-  $: isDone = assignment.status === 'done';
-  $: isSkipped = assignment.status === 'skipped';
-  $: isRejected = assignment.status === 'rejected';
-  $: isMine = assignment.person_id === $currentUser?.person_id;
-  $: isUnassigned = !assignment.person_id;
-
-  // Overdue: an unfinished item whose due date is before today.
-  $: isOverdue =
-    (isOpen || isPending || isRejected) && assignment.due_date?.slice(0, 10) < today();
+  // All derived card state lives in the pure selector (unit-tested).
+  $: cs = choreState(assignment, $currentUser, { showAdminControls, readonly, todayStr: today() });
+  $: ({
+    isOpen, isPending, isDone, isSkipped, isRejected, isMine, isUnassigned,
+    isOverdue, showApproveReject, isInteractive, canUncheck,
+  } = cs);
 
   // A non-empty review_note only persists on a sent-back, not-yet-redone chore
   // (actionReject sets it; actionComplete clears it). Show it as feedback, named
   // by the reviewer when we can resolve them.
-  $: reviewerName =
-    assignment.reviewed_by
-      ? ($people.find((p) => p.person_id === assignment.reviewed_by)?.name ?? null)
-      : null;
-
-  // Admin sees approve/reject inline (not in overflow) for pending items
-  $: showApproveReject = showAdminControls && isPending;
-  $: isInteractive = !readonly && (isOpen || isRejected) && (isMine || isUnassigned);
-
-  // Uncheck: the assignee (or an admin) can undo a done/pending chore, unless
-  // it has been approved (done with a reviewer recorded). Note: we intentionally
-  // do NOT gate on `readonly` here — admins view family members' cards as
-  // readonly (can't tap-to-complete them) but should still be able to undo them.
-  $: canUncheck =
-    (isMine || showAdminControls) &&
-    ((isDone && !assignment.reviewed_by) || isPending);
+  $: reviewerName = resolveReviewerName(assignment, $people);
 
   function handleTap() {
     if (!isInteractive) return;
@@ -99,9 +81,7 @@
       {/if}
     </div>
 
-    {#if assignment.description}
-      <span class="chore-description">{assignment.description}</span>
-    {/if}
+    <CollapsibleDescription text={assignment.description} />
 
     {#if isPending && isMine}
       <PendingReviewBadge />
@@ -252,11 +232,6 @@
     border-radius: 8px;
   }
 
-  .chore-description {
-    font-size: 12px;
-    color: #6b7280;
-    line-height: 1.35;
-  }
 
   .rejection-note {
     font-size: 12px;

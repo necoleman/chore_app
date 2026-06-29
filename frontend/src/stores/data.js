@@ -139,7 +139,16 @@ export async function rejectAssignment(assignment_id, admin_person_id, review_no
 
 export async function reassignAssignment(assignment_id, person_id, admin_person_id) {
   const prev = getAssignment(assignment_id);
-  updateAssignment(assignment_id, { person_id, _optimistic: true });
+  // Resolve name/color optimistically so the card updates immediately. An empty
+  // person_id clears them — i.e. "make unclaimed" moves the card to the
+  // unclaimed bucket right away.
+  const person = person_id ? get(people).find((p) => p.person_id === person_id) : null;
+  updateAssignment(assignment_id, {
+    person_id,
+    person_name: person?.name ?? null,
+    person_color: person?.color ?? null,
+    _optimistic: true,
+  });
   try {
     await post('reassign', { assignment_id, person_id, admin_person_id });
     updateAssignment(assignment_id, { _optimistic: false });

@@ -13,6 +13,8 @@ Test environments needed:
 
 > **Switching users while testing:** the app has no log-out button. To test as a different family member, clear the `chore_current_user` localStorage key (desktop console: `localStorage.removeItem('chore_current_user'); location.reload()`) to return to the person picker. Full steps (desktop + installed iOS PWA) are in the README under *Local Testing → "Switching users / 'logging out' during testing."*
 
+> **Automated coverage (run before deploy):** much of this plan is now guarded by the local test suite — `npm test` (Vitest: date/selector logic, store mutations, and the Apps Script backend via an in-memory harness) and `npm run test:e2e` (Playwright: onboarding, complete-via-circle, overflow menu, sent-back feedback, claim, overdue, Manage Chores). See README → *Local Testing → "Running the automated tests."* Manual passes can therefore focus on what automation can't reach: **real push notifications**, **actual iOS Safari/standalone** rendering, install/A2HS, and live Google Sheets/Apps Script behavior.
+
 ---
 
 ## 1. Onboarding
@@ -732,6 +734,36 @@ Covers the v0.2.0 batch (enhancements 5–8). Requires the `once_date` column on
 
 ---
 
+## 18. Next-Due, First-Due, Sort, Description & Make-Unclaimed (v0.3.0)
+
+Covers enhancements 10–15. Requires the `start_date` column on the Chores tab and the redeployed Apps Script.
+
+### ND-01 — Next-due tag on the Chores screen
+**Preconditions:** Active chores of varied frequencies.
+**Steps:** Open Manage Chores.
+**Expected:** Each non-daily chore shows a "Next: …" tag — a weekday name for weekly/custom (e.g. "Tuesday", or "Today"), a date for monthly/interval/once. Daily chores show no next-due tag. (Today screen unchanged — no next-due there.)
+
+### FD-01 — First due date defers generation
+**Preconditions:** Add a chore with a future "First due date" (`start_date`).
+**Steps:** Run `runNightlyGenerator` before that date, then on/after it.
+**Expected:** No assignment is created before `start_date`; it generates on/after. The value round-trips in the editor.
+
+### SORT-01 — Sort the Chores screen
+**Steps:** Use the Sort dropdown: Location, Assignee, Periodicity, Next due.
+**Expected:** Location → A–Z (blank last); Assignee → unclaimed first, then by name; Periodicity → daily→weekly→custom→monthly→interval→once; Next due → soonest first. "Default" restores sheet order.
+
+### DESC-COLLAPSE-01 — Collapsible description
+**Preconditions:** A chore with a long description.
+**Steps:** View it on Manage Chores and on the Today card.
+**Expected:** It shows one line with a carat; tapping expands to full text and collapses again. Short descriptions show in full with no carat.
+
+### UNCLAIM-01 — Make a chore unclaimed from Today
+**Preconditions:** An assigned, open chore on Today (as admin).
+**Steps:** Three-dot menu → **↩ Make unclaimed**.
+**Expected:** The chore moves to "Available to Claim" (assignee cleared) immediately and stays there after reload. The `Assignments` row has an empty `person_id`. No errant push is sent.
+
+---
+
 ## Summary Table
 
 | Area | Total Cases | Security Cases |
@@ -753,7 +785,8 @@ Covers the v0.2.0 batch (enhancements 5–8). Requires the `once_date` column on
 | Chore Location, Description & Search | 12 | — |
 | Tap Target, Overflow Menu & Sent-Back Feedback | 6 | — |
 | List Ordering, Uncheck, Overdue & One-Time | 14 | — |
-| **Total** | **130** | **10** |
+| Next-Due, First-Due, Sort, Description & Make-Unclaimed | 5 | — |
+| **Total** | **135** | **10** |
 
 ---
 
@@ -892,3 +925,8 @@ Copy the table below into a spreadsheet. Fill in **Tester**, **Date**, **Result*
 | FB-01 | Tap/Overflow/Feedback | Child sees sent-back feedback with reviewer name | | | | |
 | FB-02 | Tap/Overflow/Feedback | Re-completing clears the note | | | | |
 | RM-01 | Tap/Overflow/Feedback | "Did it" is removed from Manage Chores | | | | |
+| ND-01 | NextDue/Sort/Unclaim | Next-due tag on Chores screen (weekday/date; none for daily) | | | | |
+| FD-01 | NextDue/Sort/Unclaim | First due date defers generation | | | | |
+| SORT-01 | NextDue/Sort/Unclaim | Sort by location/assignee/periodicity/next-due | | | | |
+| DESC-COLLAPSE-01 | NextDue/Sort/Unclaim | Collapsible description (both screens) | | | | |
+| UNCLAIM-01 | NextDue/Sort/Unclaim | Make a chore unclaimed from Today | | | | |

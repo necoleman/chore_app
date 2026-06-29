@@ -382,6 +382,7 @@ function actionAddChore(body) {
     monthly_day: body.monthly_day || '',
     interval_days: body.interval_days || '',
     once_date: body.once_date || '',
+    start_date: body.start_date || '',
     last_generated_date: '',
     default_assignee: body.default_assignee || '',
     requires_approval: body.requires_approval === true || body.requires_approval === 'true' ? true : false,
@@ -399,7 +400,7 @@ function actionUpdateChore(body) {
 
   var updates = {};
   var allowed = ['name', 'location', 'description', 'points', 'frequency', 'custom_days',
-                 'monthly_day', 'interval_days', 'once_date', 'default_assignee', 'requires_approval', 'active'];
+                 'monthly_day', 'interval_days', 'once_date', 'start_date', 'default_assignee', 'requires_approval', 'active'];
   allowed.forEach(function(field) {
     if (body.hasOwnProperty(field)) updates[field] = body[field];
   });

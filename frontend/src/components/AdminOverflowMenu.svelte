@@ -17,6 +17,11 @@
     showReassign = false;
   }
 
+  function makeUnclaimed() {
+    reassignAssignment(assignment.assignment_id, '', $currentUser.person_id);
+    open = false;
+  }
+
   function handleBump() {
     bumpAssignment(assignment.assignment_id, bumpDate, $currentUser.person_id);
     showBump = false;
@@ -42,6 +47,11 @@
       <button class="menu-item" on:click|stopPropagation={() => { open = false; showBump = true; }}>
         📅 Move date
       </button>
+      {#if assignment.person_id}
+        <button class="menu-item" on:click|stopPropagation={makeUnclaimed}>
+          ↩ Make unclaimed
+        </button>
+      {/if}
     </div>
   {/if}
 </div>

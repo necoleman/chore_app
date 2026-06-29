@@ -23,6 +23,9 @@ function daysBetween(a, b) {
 function isDueToday(chore, today) {
   var freq = chore.frequency;
 
+  // First-due date: never generate before the chore's start_date.
+  if (chore.start_date && formatDate(today) < chore.start_date) return false;
+
   if (freq === 'daily') return true;
 
   if (freq === 'once') {

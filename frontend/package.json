@@ -1,22 +1,29 @@
 {
   "name": "chore-app",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:all": "vitest run && playwright test"
   },
   "dependencies": {
     "firebase": "^10.14.1",
     "svelte-spa-router": "^4.0.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.48.0",
     "@sveltejs/vite-plugin-svelte": "^3.1.2",
+    "jsdom": "^25.0.1",
     "svelte": "^4.2.19",
     "vite": "^5.4.8",
     "vite-plugin-pwa": "^0.20.5",
+    "vitest": "^2.1.4",
     "workbox-window": "^7.3.0"
   }
 }

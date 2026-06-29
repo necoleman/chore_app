@@ -4,6 +4,11 @@ frontend/.env.local
 frontend/.env.*.local
 *.env.local
 
+# Test artifacts
+frontend/test-results
+frontend/playwright-report
+frontend/.playwright
+
 # Apps Script credentials
 apps-script/.clasp.json
 

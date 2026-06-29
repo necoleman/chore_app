@@ -1,7 +1,7 @@
 # List of enhancements and bugfixes
 
 Rev. 2026-06-28
-App version 0.2.0
+App version 0.3.0
 
 ## Issue log
 
@@ -30,8 +30,12 @@ Here is a list of proposed enhancements:
 | ✅ Done (v0.2.0) | 7 | Keep overdue chores from previous days on the "Today" tab flagged as overdue until they're either resolved or bumped by an admin *(Unfinished items of any age stay on Today with an "Overdue · MM-DD" badge, sorted to the top; cleared by completing, bumping, or skipping. No age cutoff.)* |
 | ✅ Done (v0.2.0) | 8 | Handle one-time tasks (for example, moving furniture in/out). It's fine to update the data model for this. *(New `once` frequency + `once_date` column; generates a single assignment on/after the date, then auto-archives the chore (active=FALSE). Form has a "One-time" option + date picker.)* |
 | ⬜ Open | 9 | When adding a new task as Monthly or Every N Days, there should be a way to set "first due date" - for a new task, it should decay or to today's date but should be editable. In general, tasks should have a "next due" and " last done" field. For non weekly daily tasks it could make sense to have "next due" listed so it is shown alongside assignee and location, without having to click on the task. |
-| Open | 10 | In the Chores screen (but NOT in the Today screen), you should be able to see when the next date the chore will be due, except for daily chores (which should not display a date due). Maybe: Weekly chores or chores that are scheduled to occur several specific days of the week should either say "Today" if they are due today or the name of the weekday they are next due (i.e. Tuesday) rather than the date. |
-| Open | 11 |In the Chores screen, you should be able to see the first line of the description of the chore, with a little button that opens the rest of the description so you can see the full thing, and a button to minimize it again. This should probably also be the case on the Today screen, although we need to be careful that the description doesn't clutter things up too much. Maybe it's just a button with a carrot at the bottom of each chore that says "Description" and if you hit the carrot it opens, and hten you hit a minimize carrot to close it again? |
+| ✅ Done (v0.3.0) | 10 | In the Chores screen (but NOT in the Today screen), you should be able to see when the next date the chore will be due, except for daily chores (which should not display a date due). Maybe: Weekly chores or chores that are scheduled to occur several specific days of the week should either say "Today" if they are due today or the name of the weekday they are next due (i.e. Tuesday) rather than the date. |
+| ✅ Done (v0.3.0) | 11 |In the Chores screen, you should be able to see the first line of the description of the chore, with a little button that opens the rest of the description so you can see the full thing, and a button to minimize it again. This should probably also be the case on the Today screen, although we need to be careful that the description doesn't clutter things up too much. Maybe it's just a button with a carrot at the bottom of each chore that says "Description" and if you hit the carrot it opens, and hten you hit a minimize carrot to close it again? |
+| ✅ Done (v0.3.0) | 12 | It should be possible to (from the Today screen) reassign a chore to the unclaimed button (i.e. reassign it from you or someone else without having to choose a new person to assign it to, so it instead goes back in the unclaimed bucket) *(Three-dot menu → "↩ Make unclaimed".)* | 
+| ✅ Done (v0.3.0) | 13 | Set the first date a chore is to be due, in the chore editor *(new `start_date` column; the generator won't run the chore before it).* |
+| ✅ Done (v0.3.0) | 14 | Next date expected to be displayed in the Chores screen *(same as #10 — a "Next: …" tag per non-daily chore).* |
+| ✅ Done (v0.3.0) | 15 | Ability to sort the Chores screen by location, default person (unclaimed at top), by periodicity, or by countdown time *(Sort dropdown: Default / Location / Assignee / Periodicity / Next due).* |
 
 
 ## Bugs 
