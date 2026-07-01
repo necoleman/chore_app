@@ -793,6 +793,25 @@ Covers enhancements 9, 16, 17, 18. Requires the new `monthly_week` / `monthly_we
 
 ---
 
+## 20. Quick-Add from Today (v1.1.0)
+
+Covers enhancement 19. Requires the redeployed Apps Script (uses the #17 generate-on-create helper).
+
+### QA-01 — Any user can quick-add a chore from Today
+**Preconditions:** Signed in as a **non-admin**.
+**Steps:** On the Today screen tap **+ Add**, enter a name (e.g. "Water plants"), tap **Add**.
+**Expected:** The sheet closes and the chore appears under **My Chores** right away (assigned to you, worth 1 pt, no approval). An empty name is rejected with a "Name is required" toast and no chore is created.
+
+### QA-02 — Quick-added chore is a one-time chore in Inactive
+**Steps:** After QA-01, open **Manage Chores** (as admin) and look in the **Inactive** section.
+**Expected:** The chore is listed there (frequency `once`; it auto-archived after generating today's assignment). Completing today's assignment awards 1 pt with no approval step.
+
+### QA-03 — Admin promotes a quick-added chore to recurring
+**Steps:** In Manage Chores → Inactive, tap **Edit** on the quick-added chore. Change frequency (e.g. Daily), tick **Active**, Save. Run `runNightlyGenerator` (or wait for the nightly run).
+**Expected:** The chore now generates on its recurring schedule going forward; no duplicate is created for today.
+
+---
+
 ## Summary Table
 
 | Area | Total Cases | Security Cases |
@@ -816,7 +835,8 @@ Covers enhancements 9, 16, 17, 18. Requires the new `monthly_week` / `monthly_we
 | List Ordering, Uncheck, Overdue & One-Time | 14 | — |
 | Next-Due, First-Due, Sort, Description & Make-Unclaimed | 5 | — |
 | Last-Done, Monthly nth-Weekday, Due-Today & Frequency Colors | 5 | — |
-| **Total** | **140** | **10** |
+| Quick-Add from Today | 3 | — |
+| **Total** | **143** | **10** |
 
 ---
 
@@ -965,3 +985,6 @@ Copy the table below into a spreadsheet. Fill in **Tester**, **Date**, **Result*
 | MNW-02 | v1.0.0 | nth-weekday generates on the right day (+catch-up) | | | | |
 | DUE-TODAY-01 | v1.0.0 | Chore created due today appears immediately | | | | |
 | FREQ-COLOR-01 | v1.0.0 | Frequency color-coding on Today (pending/rejected override) | | | | |
+| QA-01 | v1.1.0 | Any user can quick-add a chore from Today | | | | |
+| QA-02 | v1.1.0 | Quick-added chore is a one-time chore in Inactive | | | | |
+| QA-03 | v1.1.0 | Admin promotes a quick-added chore to recurring | | | | |

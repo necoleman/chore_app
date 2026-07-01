@@ -1,7 +1,7 @@
 # List of enhancements and bugfixes
 
 Rev. 2026-06-30
-App version 1.0.0
+App version 1.1.0
 
 ## Issue log
 
@@ -39,6 +39,7 @@ Here is a list of proposed enhancements:
 | ✅ Done (v1.0.0) | 16 | Choose the weekend that a monthly chore is done. Monthly chores should, instead of date number of each month, instead be set to come due “first Friday of the month” or second or third or fourth. So when you create, you choose from those options: First Friday, Second Friday, Etc. Disregard the existence of the fifth Friday. *(New `monthly_week` (1–4) + `monthly_weekday` (0–6) columns; the chore editor's monthly section has a "Day of month / Day of week" toggle. When both nth-weekday fields are set they take precedence over `monthly_day`. Day-of-month monthly still supported.)* |
 | ✅ Done (v1.0.0) | 17 | Chores created on a day and set to be due that day should show up. Currently a chore created with due date today does not show up on the assignment screen *(add/update-chore now generate today's assignment immediately via a shared `generateAssignmentIfDue` helper, instead of waiting for the nightly run.)* |
 | ✅ Done (v1.0.0) | 18 | Color-code assignments by frequency: daily, light blue; weekly, light green; all others, light yellow *(Whole-card tint on open cards only; pending (amber) / rejected (red) and done/skipped greying still override. `frequency` added to the Today payload.)* |
+| ✅ Done (v1.1.0) | 19 | Quick-create a chore from the Today screen. Any user should be able to do this - it should default to a one-time chore. Admins should be able to edit the chore to make it recurring from the Chores screen. *("+ Add" on the Today header opens a name-only sheet (`QuickAddChore`). Creates a `once` chore due today, assigned to the creator, 1 pt, no approval — reusing `add_chore` + the #17 generate-on-create helper. The chore auto-archives into Manage Chores → Inactive, where an admin can edit it into a recurring, active chore. Follow-up pinned: discoverability/cleanup if one-time chores pile up.)* |
 	
 ## Bugs 
 

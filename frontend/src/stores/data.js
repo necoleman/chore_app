@@ -37,6 +37,36 @@ export function stopPolling() {
   }
 }
 
+// ─── Quick-add (any user, from the Today screen) ──────────────────────────────
+//
+// Creates a one-time chore due today assigned to the creator (#19). The backend
+// generates today's assignment immediately (once + once_date=today) and archives
+// the chore into Manage Chores → Inactive, where an admin can make it recurring.
+export async function quickAddChore(name, person_id) {
+  const trimmed = (name || '').trim();
+  if (!trimmed) {
+    showToast('Name is required');
+    return false;
+  }
+  try {
+    await post('add_chore', {
+      name: trimmed,
+      frequency: 'once',
+      once_date: today(),
+      default_assignee: person_id || '',
+      points: 1,
+      requires_approval: false,
+      active: true,
+    });
+    await refresh(); // pulls the just-generated assignment onto Today
+    showToast('Chore added', 'success');
+    return true;
+  } catch (e) {
+    showToast(e.message || 'Could not add chore — try again');
+    return false;
+  }
+}
+
 // ─── Optimistic mutation helpers ──────────────────────────────────────────────
 
 function updateAssignment(assignment_id, patch) {

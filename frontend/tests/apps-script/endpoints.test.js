@@ -210,6 +210,23 @@ describe('generate-on-create (#17)', () => {
     ctx.actionAddChore({ name: 'Laundry', frequency: 'weekly', custom_days: '3' });
     expect(read('Assignments').length).toBe(0);
   });
+
+  it('quick-add (once + today) generates an assignment for the creator and archives the chore (#19)', () => {
+    const { ctx, read } = loadBackend();
+    ctx.actionAddChore({
+      name: 'Water plants', frequency: 'once', once_date: '2026-06-28',
+      default_assignee: 'me', points: 1, requires_approval: false, active: true,
+    });
+    const assignments = read('Assignments');
+    expect(assignments.length).toBe(1);
+    expect(assignments[0].person_id).toBe('me');
+    expect(assignments[0].due_date).toBe('2026-06-28');
+    expect(assignments[0].status).toBe('open');
+    // One-time chore auto-archives so it lands in Manage Chores → Inactive.
+    const chore = read('Chores')[0];
+    expect(chore.active).toBe(false);
+    expect(chore.last_generated_date).toBe('2026-06-28');
+  });
 });
 
 describe('incrementPoints', () => {

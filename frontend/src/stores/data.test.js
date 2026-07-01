@@ -15,7 +15,9 @@ import {
   uncompleteAssignment,
   rejectAssignment,
   reassignAssignment,
+  quickAddChore,
 } from './data.js';
+import { today } from '../lib/utils.js';
 
 function seed(list, peopleList = []) {
   assignments.set(list);
@@ -110,6 +112,40 @@ describe('reassignAssignment', () => {
     expect(row.person_id).toBe('');
     expect(row.person_name).toBe(null);
     expect(post).toHaveBeenCalledWith('reassign', { assignment_id: 'x', person_id: '', admin_person_id: 'me' });
+  });
+});
+
+describe('quickAddChore (#19)', () => {
+  it('posts a one-time chore due today assigned to the creator, then refreshes', async () => {
+    post.mockResolvedValueOnce({ chore_id: 'c_x', success: true });
+    apiGet.mockResolvedValueOnce({ assignments: [{ assignment_id: 'a1', status: 'open' }], people: [] });
+    const ok = await quickAddChore('  Water plants  ', 'me');
+    expect(ok).toBe(true);
+    expect(post).toHaveBeenCalledWith('add_chore', {
+      name: 'Water plants', // trimmed
+      frequency: 'once',
+      once_date: today(),
+      default_assignee: 'me',
+      points: 1,
+      requires_approval: false,
+      active: true,
+    });
+    expect(apiGet).toHaveBeenCalledWith('today'); // refresh pulled the new assignment
+    expect(get(assignments)[0].assignment_id).toBe('a1');
+  });
+
+  it('rejects an empty name without hitting the network', async () => {
+    const ok = await quickAddChore('   ', 'me');
+    expect(ok).toBe(false);
+    expect(post).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledWith('Name is required');
+  });
+
+  it('returns false and toasts on server failure', async () => {
+    post.mockRejectedValueOnce(new Error('boom'));
+    const ok = await quickAddChore('Dishes', 'me');
+    expect(ok).toBe(false);
+    expect(showToast).toHaveBeenCalledWith('boom');
   });
 });
 

@@ -1,8 +1,9 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
-  import { assignments, people, isRefreshing, lastUpdated, startPolling, stopPolling } from '../stores/data.js';
+  import { assignments, people, isRefreshing, lastUpdated, startPolling, stopPolling, quickAddChore } from '../stores/data.js';
   import { currentUser } from '../stores/user.js';
   import ChoreCard from '../components/ChoreCard.svelte';
+  import QuickAddChore from '../components/QuickAddChore.svelte';
   import NeedsReviewSection from '../components/NeedsReviewSection.svelte';
   import { relativeTime, today } from '../lib/utils.js';
   import { splitTodaySections } from '../lib/choreSelectors.js';
@@ -17,6 +18,8 @@
   $: myAssignments = sections.mine;
   $: familyGroups = sections.familyGroups;
   $: unassigned = sections.unassigned;
+
+  let showQuickAdd = false;
 
   onMount(() => startPolling());
   onDestroy(() => stopPolling());
@@ -34,12 +37,15 @@
         <span class="updated">Updated {relativeTime($lastUpdated.toISOString())}</span>
       {/if}
     </div>
-    <button class="refresh-btn" on:click={handleRefresh} disabled={$isRefreshing} aria-label="Refresh">
-      <svg class:spinning={$isRefreshing} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
-        <polyline points="23 4 23 10 17 10"/>
-        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-      </svg>
-    </button>
+    <div class="header-actions">
+      <button class="add-btn" on:click={() => (showQuickAdd = true)}>+ Add</button>
+      <button class="refresh-btn" on:click={handleRefresh} disabled={$isRefreshing} aria-label="Refresh">
+        <svg class:spinning={$isRefreshing} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+          <polyline points="23 4 23 10 17 10"/>
+          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+        </svg>
+      </button>
+    </div>
   </header>
 
   <!-- Needs review (admin only) -->
@@ -83,6 +89,13 @@
   {/if}
 </div>
 
+{#if showQuickAdd}
+  <QuickAddChore
+    onSubmit={(name) => quickAddChore(name, $currentUser?.person_id)}
+    onClose={() => (showQuickAdd = false)}
+  />
+{/if}
+
 <style>
   .screen {
     padding-bottom: 16px;
@@ -109,6 +122,23 @@
   .updated {
     font-size: 11px;
     color: #9ca3af;
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .add-btn {
+    background: #16a34a;
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 8px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
   }
 
   .refresh-btn {
