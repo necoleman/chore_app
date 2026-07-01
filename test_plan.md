@@ -812,6 +812,31 @@ Covers enhancement 19. Requires the redeployed Apps Script (uses the #17 generat
 
 ---
 
+## 21. Quick-Add Assignee, Today Sort & Due Tag (v1.2.0)
+
+Covers enhancements 20 and 22, plus the per-card "Due …" tag (display groundwork for 21/23). Frontend-only; works even before the Apps Script backend is redeployed (the new `lead_days`/`missed_count` fields degrade gracefully).
+
+### QAA-01 — Admin can assign a quick-add to someone else
+**Preconditions:** Signed in as an **admin**.
+**Steps:** Today → **+ Add** → enter a name → in **Assign to**, pick another person (or **Unclaimed**) → **Add**.
+**Expected:** The chore is created for the chosen person (appears in their Family section, or in **Available to Claim** if Unclaimed). Defaulting the picker to **Me** still assigns to the creator.
+
+### QAA-02 — Non-admin sees no assignee field
+**Preconditions:** Signed in as a **non-admin**.
+**Steps:** Today → **+ Add**.
+**Expected:** No "Assign to" control; the chore is always self-assigned (as in v1.1.0).
+
+### TSORT-01 — Sort the Today screen
+**Steps:** Use the **Sort** dropdown: Due date, then Frequency, then back to Default.
+**Expected:** Items reorder **within** the My Chores / Family / Available sections (sections are not merged). Due date → soonest/most-overdue first; Frequency → daily→weekly→custom→monthly→interval→once. Finished (done/skipped) items stay at the bottom of their section in every mode. Default restores the overdue-first ordering.
+
+### DUETAG-01 — "Due …" tag on every card
+**Preconditions:** Assignments due today and at least one overdue.
+**Steps:** View the Today screen.
+**Expected:** Each open/pending card shows a **Due …** tag — "Today", "Tomorrow", a weekday name (next few days), or a short date (further out / past). Overdue cards additionally show **Overdue Nd** with the correct day count. Done/skipped cards show no Due tag.
+
+---
+
 ## Summary Table
 
 | Area | Total Cases | Security Cases |
@@ -836,7 +861,8 @@ Covers enhancement 19. Requires the redeployed Apps Script (uses the #17 generat
 | Next-Due, First-Due, Sort, Description & Make-Unclaimed | 5 | — |
 | Last-Done, Monthly nth-Weekday, Due-Today & Frequency Colors | 5 | — |
 | Quick-Add from Today | 3 | — |
-| **Total** | **143** | **10** |
+| Quick-Add Assignee, Today Sort & Due Tag | 4 | — |
+| **Total** | **147** | **10** |
 
 ---
 
@@ -988,3 +1014,7 @@ Copy the table below into a spreadsheet. Fill in **Tester**, **Date**, **Result*
 | QA-01 | v1.1.0 | Any user can quick-add a chore from Today | | | | |
 | QA-02 | v1.1.0 | Quick-added chore is a one-time chore in Inactive | | | | |
 | QA-03 | v1.1.0 | Admin promotes a quick-added chore to recurring | | | | |
+| QAA-01 | v1.2.0 | Admin can assign a quick-add to someone else | | | | |
+| QAA-02 | v1.2.0 | Non-admin sees no assignee field | | | | |
+| TSORT-01 | v1.2.0 | Sort the Today screen (within sections) | | | | |
+| DUETAG-01 | v1.2.0 | "Due …" tag on every card | | | | |

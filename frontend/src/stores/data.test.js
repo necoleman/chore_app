@@ -134,6 +134,13 @@ describe('quickAddChore (#19)', () => {
     expect(get(assignments)[0].assignment_id).toBe('a1');
   });
 
+  it('admin can quick-add unclaimed (empty person_id)', async () => {
+    post.mockResolvedValueOnce({ chore_id: 'c_x', success: true });
+    apiGet.mockResolvedValueOnce({ assignments: [], people: [] });
+    await quickAddChore('Sweep porch', '');
+    expect(post).toHaveBeenCalledWith('add_chore', expect.objectContaining({ default_assignee: '' }));
+  });
+
   it('rejects an empty name without hitting the network', async () => {
     const ok = await quickAddChore('   ', 'me');
     expect(ok).toBe(false);

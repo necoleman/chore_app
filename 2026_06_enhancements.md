@@ -1,7 +1,7 @@
 # List of enhancements and bugfixes
 
-Rev. 2026-06-30
-App version 1.1.0
+Rev. 2026-07-01
+App version 1.2.0
 
 ## Issue log
 
@@ -40,7 +40,11 @@ Here is a list of proposed enhancements:
 | ✅ Done (v1.0.0) | 17 | Chores created on a day and set to be due that day should show up. Currently a chore created with due date today does not show up on the assignment screen *(add/update-chore now generate today's assignment immediately via a shared `generateAssignmentIfDue` helper, instead of waiting for the nightly run.)* |
 | ✅ Done (v1.0.0) | 18 | Color-code assignments by frequency: daily, light blue; weekly, light green; all others, light yellow *(Whole-card tint on open cards only; pending (amber) / rejected (red) and done/skipped greying still override. `frequency` added to the Today payload.)* |
 | ✅ Done (v1.1.0) | 19 | Quick-create a chore from the Today screen. Any user should be able to do this - it should default to a one-time chore. Admins should be able to edit the chore to make it recurring from the Chores screen. *("+ Add" on the Today header opens a name-only sheet (`QuickAddChore`). Creates a `once` chore due today, assigned to the creator, 1 pt, no approval — reusing `add_chore` + the #17 generate-on-create helper. The chore auto-archives into Manage Chores → Inactive, where an admin can edit it into a recurring, active chore. Follow-up pinned: discoverability/cleanup if one-time chores pile up.)* |
-	
+| ✅ Done (v1.2.0) | 20 |	Quick-add has an assignment field for admins *(Admins get an "Assign to" selector on the Today quick-add sheet — Me / any person / Unclaimed; non-admins still self-assign only.)* |
+| ⬜ Open (groundwork v1.2.0) | 21 |	Overdue chores have not just overdue and due date, but how many times they've been missed. So instead of a daily chore missed three days in a row resulting in three overdue assignments, it results in one assignment that's overdue by three days. (Backend change in daily update - if an assignment is already open for a chore to be assigned, increment the "overdue by" field.) This should also _decrement_ the leaderboard by the point value of the chore. *(v1.2.0 shipped the display groundwork: `missed_count` column + payload, "Overdue Nd" / "missed N×" card tags. The generator collapse + per-recurrence points penalty lands in v1.3.0.)* |
+| ✅ Done (v1.2.0) | 22 |	Sort options the assignments page - by due date, by frequency *(Today screen "Sort: Default / Due date / Frequency" dropdown; sorts within the My / Family / Available sections, finished items stay last.)* |
+| ⬜ Open (groundwork v1.2.0) | 23 |	For non-daily chores, have them able to appear some days before their due date. This allows weekend chores to appear on Thursday, for example. We'll have default durations (e.g. weekly chores have four days to be done, due date Sunday, so they appear on Thursday morning; monthly chores have seven days to be done, due date a Sunday, so they appear the previous Monday morning and are in the list all week) *(v1.2.0 shipped the display groundwork: `lead_days` column + payload and the per-card "Due <weekday/date>" tag. The generator rewrite that actually surfaces chores early lands in v1.3.0.)* |
+
 ## Bugs 
 
 ### (20260627 T0)

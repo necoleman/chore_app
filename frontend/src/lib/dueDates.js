@@ -116,6 +116,25 @@ export function nextDueLabel(chore, todayStr = today()) {
   return shortDate(d);
 }
 
+// Friendly label for a specific assignment's due date, shown on every Today
+// card. Today/Tomorrow, a weekday name for the next few days, otherwise a short
+// date. Past dates (overdue) fall through to the short date, e.g. "Jun 28".
+export function dueLabel(dueStr, todayStr = today()) {
+  if (!dueStr) return '';
+  const d = parseLocalDate(dueStr);
+  const diff = diffDays(d, parseLocalDate(todayStr));
+  if (diff === 0) return 'Today';
+  if (diff === 1) return 'Tomorrow';
+  if (diff > 1 && diff <= 6) return WEEKDAY_FULL[d.getDay()];
+  return shortDate(d);
+}
+
+// Whole days an assignment is past due (0 if due today or in the future).
+export function daysOverdue(dueStr, todayStr = today()) {
+  if (!dueStr) return 0;
+  return Math.max(0, diffDays(parseLocalDate(todayStr), parseLocalDate(dueStr)));
+}
+
 // Format a stored date/datetime string (YYYY-MM-DD or ISO) as e.g. "Jun 24".
 // Returns '' for empty/invalid input. Used for the "Last done" tag (#9).
 export function shortDateStr(str) {

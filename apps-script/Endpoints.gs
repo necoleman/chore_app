@@ -33,9 +33,11 @@ function actionToday(params) {
       location:         chore.location || '',
       description:      chore.description || '',
       frequency:        chore.frequency || '',
+      lead_days:        chore.lead_days || '',
       points:           chore.points || 0,
       requires_approval: chore.requires_approval === true || chore.requires_approval === 'TRUE',
       person_id:        a.person_id || null,
+      missed_count:     a.missed_count || 0,
       person_name:      person.name || null,
       person_color:     person.color || null,
       due_date:         a.due_date,
@@ -407,6 +409,7 @@ function actionAddChore(body) {
     interval_days: body.interval_days || '',
     once_date: body.once_date || '',
     start_date: body.start_date || '',
+    lead_days: (body.lead_days === 0 || body.lead_days) ? body.lead_days : '',
     last_generated_date: '',
     default_assignee: body.default_assignee || '',
     requires_approval: body.requires_approval === true || body.requires_approval === 'true' ? true : false,
@@ -430,7 +433,7 @@ function actionUpdateChore(body) {
   var updates = {};
   var allowed = ['name', 'location', 'description', 'points', 'frequency', 'custom_days',
                  'monthly_day', 'monthly_week', 'monthly_weekday', 'interval_days', 'once_date',
-                 'start_date', 'default_assignee', 'requires_approval', 'active'];
+                 'start_date', 'lead_days', 'default_assignee', 'requires_approval', 'active'];
   allowed.forEach(function(field) {
     if (body.hasOwnProperty(field)) updates[field] = body[field];
   });

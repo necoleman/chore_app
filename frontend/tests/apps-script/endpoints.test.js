@@ -30,6 +30,16 @@ describe('actionToday', () => {
     });
     expect(ctx.actionToday({}).assignments[0].frequency).toBe('daily');
   });
+
+  it('includes lead_days (chore) and missed_count (assignment) in the payload', () => {
+    const { ctx } = loadBackend({
+      Chores: [{ chore_id: 'c1', name: 'Sweep', frequency: 'weekly', lead_days: 4 }],
+      Assignments: [{ assignment_id: 'a1', chore_id: 'c1', due_date: '2026-06-28', status: 'open', missed_count: 2 }],
+    });
+    const row = ctx.actionToday({}).assignments[0];
+    expect(row.lead_days).toBe(4);
+    expect(row.missed_count).toBe(2);
+  });
 });
 
 describe('actionChores last_done (#9)', () => {
@@ -188,6 +198,15 @@ describe('add/update chore start_date', () => {
     const row = read('Chores')[0];
     expect(row.monthly_week).toBe(2);
     expect(row.monthly_weekday).toBe(5);
+  });
+
+  it('lead_days round-trips through add and update (#23 groundwork)', () => {
+    const { ctx, read } = loadBackend();
+    ctx.actionAddChore({ name: 'Sweep', frequency: 'weekly', custom_days: '0', lead_days: 4 });
+    expect(read('Chores')[0].lead_days).toBe(4);
+    const choreId = read('Chores')[0].chore_id;
+    ctx.actionUpdateChore({ chore_id: choreId, lead_days: 2 });
+    expect(read('Chores')[0].lead_days).toBe(2);
   });
 });
 

@@ -87,6 +87,26 @@ describe('splitTodaySections', () => {
     expect(famIds).toEqual(['fam-open']); // pending excluded
     expect(unassigned.map((x) => x.assignment_id)).toEqual(['claimable']);
   });
+
+  it('sortMode "due" orders my section by due date (finished still last)', () => {
+    const list = [
+      a({ assignment_id: 'mine-done', person_id: 'me', status: 'done', due_date: TODAY }),
+      a({ assignment_id: 'mine-later', person_id: 'me', status: 'open', due_date: '2026-06-27' }),
+      a({ assignment_id: 'mine-earlier', person_id: 'me', status: 'open', due_date: '2026-06-25' }),
+    ];
+    const { mine } = splitTodaySections(list, me, true, TODAY, 'due');
+    expect(mine.map((x) => x.assignment_id)).toEqual(['mine-earlier', 'mine-later', 'mine-done']);
+  });
+
+  it('sortMode "frequency" orders my section by cadence (finished still last)', () => {
+    const list = [
+      a({ assignment_id: 'mine-monthly', person_id: 'me', status: 'open', frequency: 'monthly', due_date: '2026-06-25' }),
+      a({ assignment_id: 'mine-daily', person_id: 'me', status: 'open', frequency: 'daily', due_date: '2026-06-25' }),
+      a({ assignment_id: 'mine-done', person_id: 'me', status: 'done', frequency: 'daily', due_date: TODAY }),
+    ];
+    const { mine } = splitTodaySections(list, me, true, TODAY, 'frequency');
+    expect(mine.map((x) => x.assignment_id)).toEqual(['mine-daily', 'mine-monthly', 'mine-done']);
+  });
 });
 
 describe('choreState', () => {

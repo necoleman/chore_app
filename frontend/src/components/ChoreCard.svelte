@@ -15,6 +15,7 @@
   import AdminOverflowMenu from './AdminOverflowMenu.svelte';
   import CollapsibleDescription from './CollapsibleDescription.svelte';
   import { initials, contrastColor, today } from '../lib/utils.js';
+  import { dueLabel, daysOverdue } from '../lib/dueDates.js';
   import { choreState, reviewerName as resolveReviewerName } from '../lib/choreSelectors.js';
   import { portal } from '../lib/portal.js';
 
@@ -87,8 +88,14 @@
       {#if assignment.location}
         <span class="location-tag">{assignment.location}</span>
       {/if}
+      {#if !isDone && !isSkipped && assignment.due_date}
+        <span class="due-tag" class:due-tag--overdue={isOverdue}>Due {dueLabel(assignment.due_date, today())}</span>
+      {/if}
       {#if isOverdue}
-        <span class="overdue-tag">Overdue · {assignment.due_date?.slice(5, 10)}</span>
+        <span class="overdue-tag">Overdue {daysOverdue(assignment.due_date, today())}d</span>
+      {/if}
+      {#if assignment.missed_count}
+        <span class="missed-tag">missed {assignment.missed_count}×</span>
       {/if}
     </div>
 
@@ -306,11 +313,34 @@
     color: #9ca3af;
   }
 
+  .due-tag {
+    font-size: 11px;
+    font-weight: 500;
+    background: #f1f5f9;
+    color: #475569;
+    padding: 1px 7px;
+    border-radius: 8px;
+  }
+
+  .due-tag--overdue {
+    background: #fef2f2;
+    color: #b91c1c;
+  }
+
   .overdue-tag {
     font-size: 11px;
     font-weight: 600;
     background: #fee2e2;
     color: #b91c1c;
+    padding: 1px 7px;
+    border-radius: 8px;
+  }
+
+  .missed-tag {
+    font-size: 11px;
+    font-weight: 600;
+    background: #fde68a;
+    color: #92400e;
     padding: 1px 7px;
     border-radius: 8px;
   }

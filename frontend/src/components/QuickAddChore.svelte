@@ -1,17 +1,23 @@
 <script>
   import { portal } from '../lib/portal.js';
 
-  export let onSubmit;  // async (name) => boolean — true closes the sheet
+  export let onSubmit;  // async (name, person_id) => boolean — true closes the sheet
   export let onClose;
+  export let isAdmin = false;
+  export let people = [];
+  export let selfId = '';   // current user's person_id (default assignee)
 
   let name = '';
+  // Admins can pick who the chore is for; everyone else self-assigns.
+  let assignee = selfId;
   let saving = false;
 
   async function handleSubmit() {
     if (saving) return;
     saving = true;
     try {
-      const ok = await onSubmit(name);
+      const personId = isAdmin ? assignee : selfId;
+      const ok = await onSubmit(name, personId);
       if (ok) onClose();
     } finally {
       saving = false;
@@ -23,7 +29,7 @@
   <div class="sheet">
     <div class="sheet-handle"></div>
     <h2 class="sheet-title">Quick add chore</h2>
-    <p class="hint">Adds a one-time chore for today, assigned to you.</p>
+    <p class="hint">Adds a one-time chore for today{isAdmin ? '' : ', assigned to you'}.</p>
 
     <form on:submit|preventDefault={handleSubmit} class="form">
       <!-- svelte-ignore a11y-autofocus -->
@@ -34,6 +40,18 @@
         class="input"
         autofocus
       />
+      {#if isAdmin}
+        <label class="field">
+          <span class="label">Assign to</span>
+          <select bind:value={assignee} class="input">
+            <option value={selfId}>Me</option>
+            {#each people.filter((p) => p.person_id !== selfId) as person (person.person_id)}
+              <option value={person.person_id}>{person.name}</option>
+            {/each}
+            <option value="">Unclaimed</option>
+          </select>
+        </label>
+      {/if}
       <div class="actions">
         <button type="button" class="btn btn--cancel" on:click={onClose}>Cancel</button>
         <button type="submit" class="btn btn--save" disabled={saving}>
@@ -89,6 +107,18 @@
     display: flex;
     flex-direction: column;
     gap: 14px;
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .label {
+    font-size: 13px;
+    font-weight: 500;
+    color: #374151;
   }
 
   .input {

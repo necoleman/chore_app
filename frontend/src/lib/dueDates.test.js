@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { scheduledOn, nextDueDate, nextDueLabel, daysUntilDue } from './dueDates.js';
+import { scheduledOn, nextDueDate, nextDueLabel, daysUntilDue, dueLabel, daysOverdue } from './dueDates.js';
 import { formatDate } from './utils.js';
 
 const TODAY = '2026-06-28'; // a Sunday (TZ pinned to America/Chicago in vitest config)
@@ -75,6 +75,27 @@ describe('nextDueLabel', () => {
   });
   it('monthly far out shows a short date', () => {
     expect(nextDueLabel({ frequency: 'monthly', monthly_day: '5' }, TODAY)).toBe('Jul 5');
+  });
+});
+
+describe('dueLabel (per-card "Due …" tag)', () => {
+  // TODAY = 2026-06-28 (Sunday).
+  it('Today / Tomorrow / weekday / short date', () => {
+    expect(dueLabel('2026-06-28', TODAY)).toBe('Today');
+    expect(dueLabel('2026-06-29', TODAY)).toBe('Tomorrow');
+    expect(dueLabel('2026-06-30', TODAY)).toBe('Tuesday'); // 2 days out
+    expect(dueLabel('2026-07-10', TODAY)).toBe('Jul 10');  // >6 days → date
+  });
+  it('overdue (past) dates show a short date', () => {
+    expect(dueLabel('2026-06-25', TODAY)).toBe('Jun 25');
+  });
+});
+
+describe('daysOverdue', () => {
+  it('0 for today/future, positive for past', () => {
+    expect(daysOverdue('2026-06-28', TODAY)).toBe(0);
+    expect(daysOverdue('2026-06-30', TODAY)).toBe(0);
+    expect(daysOverdue('2026-06-25', TODAY)).toBe(3);
   });
 });
 

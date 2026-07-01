@@ -28,7 +28,7 @@ person_id | name | color | fcm_token | points_total | streak_current | streak_be
 
 **Chores**
 ```
-chore_id | name | location | description | points | frequency | custom_days | monthly_day | monthly_week | monthly_weekday | interval_days | once_date | start_date | last_generated_date | default_assignee | requires_approval | active
+chore_id | name | location | description | points | frequency | custom_days | monthly_day | monthly_week | monthly_weekday | interval_days | once_date | start_date | lead_days | last_generated_date | default_assignee | requires_approval | active
 ```
 
 **Locations** (feeds the location dropdown in the chore editor — one row per allowed location)
@@ -39,7 +39,7 @@ Example rows: `Kitchen`, `Living room`, `Garage`, `Upstairs bath`. Add or remove
 
 **Assignments**
 ```
-assignment_id | chore_id | person_id | due_date | status | completed_at | assigned_by | points_awarded | reviewed_by | reviewed_at | review_note | last_modified_by | last_modified_at
+assignment_id | chore_id | person_id | due_date | status | completed_at | assigned_by | points_awarded | missed_count | reviewed_by | reviewed_at | review_note | last_modified_by | last_modified_at
 ```
 
 4. Add at least one row to the `People` tab for yourself. Use a short `person_id` like `p_yourname`. Set `is_admin` to `TRUE` for parent accounts, `FALSE` for kids. Pick a hex color like `#16a34a` for the avatar.
@@ -401,6 +401,8 @@ Optional columns:
 - `location` — category shown on the chore (e.g. `Kitchen`), used to tell apart same-named chores. In the in-app editor this is a dropdown fed by the `Locations` tab.
 - `description` — free-text notes about what the chore involves; shown on the chore card (collapsible if long).
 - `start_date` — first date the chore is due (`YYYY-MM-DD`). Blank = starts immediately. The generator won't create assignments before this date. Set it via the chore editor's "First due date" field (e.g. to schedule a monthly/interval chore's first occurrence).
+- `lead_days` — how many days before a non-daily chore's due date its assignment should appear on Today (a "grace window"). Blank falls back to a frequency default (weekly/custom 4, monthly 7, interval `min(N−1, 7)`, once/daily 0). *(Column reserved; the generator begins honoring it in a later release.)*
+- `missed_count` (Assignments) — how many times a still-open assignment has been carried over past a recurrence; each carry-over also deducts the chore's points from the assignee's leaderboard total. *(Written by the generator; reserved until the generator rewrite ships.)*
 
 Frequency-specific columns (leave blank when not applicable):
 - `weekly` → `custom_days`: weekday number 0–6 (0 = Sunday)

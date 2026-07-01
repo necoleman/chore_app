@@ -11,9 +11,11 @@
   $: isAdmin = $currentUser?.is_admin;
   $: todayStr = today();
 
+  let sortMode = 'default'; // default | due | frequency
+
   // All Today-screen filtering/sorting/grouping lives in the pure selector
   // (unit-tested in lib/choreSelectors.test.js).
-  $: sections = splitTodaySections($assignments, $currentUser, isAdmin, todayStr);
+  $: sections = splitTodaySections($assignments, $currentUser, isAdmin, todayStr, sortMode);
   $: pendingReview = sections.pendingReview;
   $: myAssignments = sections.mine;
   $: familyGroups = sections.familyGroups;
@@ -47,6 +49,14 @@
       </button>
     </div>
   </header>
+
+  <div class="sort-wrap">
+    <select class="sort" bind:value={sortMode} aria-label="Sort chores">
+      <option value="default">Sort: Default</option>
+      <option value="due">Sort: Due date</option>
+      <option value="frequency">Sort: Frequency</option>
+    </select>
+  </div>
 
   <!-- Needs review (admin only) -->
   <NeedsReviewSection pendingItems={pendingReview} />
@@ -91,7 +101,10 @@
 
 {#if showQuickAdd}
   <QuickAddChore
-    onSubmit={(name) => quickAddChore(name, $currentUser?.person_id)}
+    isAdmin={isAdmin}
+    people={$people}
+    selfId={$currentUser?.person_id}
+    onSubmit={(name, personId) => quickAddChore(name, personId)}
     onClose={() => (showQuickAdd = false)}
   />
 {/if}
@@ -156,6 +169,20 @@
 
   @keyframes spin {
     to { transform: rotate(360deg); }
+  }
+
+  .sort-wrap {
+    padding: 0 16px 4px;
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .sort {
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
+    padding: 8px;
+    font-size: 13px;
+    background: #fff;
   }
 
   .section {

@@ -23,10 +23,27 @@ export function rankAssignment(a, todayStr) {
   return a.due_date?.slice(0, 10) < todayStr ? 0 : 1;
 }
 
+// Frequency ordering for the "Frequency" sort (mirrors ChoresAdmin).
+const FREQ_ORDER = { daily: 0, weekly: 1, custom: 2, monthly: 3, interval: 4, once: 5 };
+
+// Comparator for within-section ordering (#22). Every mode keeps finished items
+// last (via rankAssignment); 'default' also keeps overdue-first, 'due' sorts by
+// due date ascending, 'frequency' by the cadence order above.
+export function makeSectionComparator(sortMode, todayStr) {
+  const byRank = (x, y) => rankAssignment(x, todayStr) - rankAssignment(y, todayStr);
+  if (sortMode === 'due') {
+    return (x, y) => byRank(x, y) || (x.due_date || '').localeCompare(y.due_date || '');
+  }
+  if (sortMode === 'frequency') {
+    return (x, y) => byRank(x, y) || ((FREQ_ORDER[x.frequency] ?? 9) - (FREQ_ORDER[y.frequency] ?? 9));
+  }
+  return byRank;
+}
+
 // Split today's assignments into the Today screen's sections.
-export function splitTodaySections(assignments, currentUser, isAdmin, todayStr) {
+export function splitTodaySections(assignments, currentUser, isAdmin, todayStr, sortMode = 'default') {
   const todays = filterTodayAssignments(assignments, todayStr);
-  const byStatus = (x, y) => rankAssignment(x, todayStr) - rankAssignment(y, todayStr);
+  const byStatus = makeSectionComparator(sortMode, todayStr);
   const myId = currentUser?.person_id;
 
   const pendingReview = isAdmin
