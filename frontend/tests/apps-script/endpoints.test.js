@@ -22,6 +22,30 @@ describe('actionToday', () => {
     const t = ctx.actionToday({}).assignments.find((a) => a.assignment_id === 'today');
     expect(t.chore_name).toBe('Dishes');
   });
+
+  it('includes the chore frequency for color-coding (#18)', () => {
+    const { ctx } = loadBackend({
+      Chores: [{ chore_id: 'c1', name: 'Dishes', frequency: 'daily' }],
+      Assignments: [{ assignment_id: 'a1', chore_id: 'c1', due_date: '2026-06-28', status: 'open' }],
+    });
+    expect(ctx.actionToday({}).assignments[0].frequency).toBe('daily');
+  });
+});
+
+describe('actionChores last_done (#9)', () => {
+  it('attaches the most recent done completion per chore', () => {
+    const { ctx } = loadBackend({
+      Chores: [{ chore_id: 'c1', name: 'Vacuum' }, { chore_id: 'c2', name: 'Trash' }],
+      Assignments: [
+        { assignment_id: 'a1', chore_id: 'c1', status: 'done', completed_at: '2026-06-20T10:00:00Z' },
+        { assignment_id: 'a2', chore_id: 'c1', status: 'done', completed_at: '2026-06-24T10:00:00Z' },
+        { assignment_id: 'a3', chore_id: 'c1', status: 'open' },
+      ],
+    });
+    const chores = ctx.actionChores({}).chores;
+    expect(chores.find((c) => c.chore_id === 'c1').last_done).toBe('2026-06-24T10:00:00Z');
+    expect(chores.find((c) => c.chore_id === 'c2').last_done).toBe('');
+  });
 });
 
 describe('actionComplete', () => {
@@ -156,6 +180,35 @@ describe('add/update chore start_date', () => {
     const { ctx, read } = loadBackend({ Chores: [{ chore_id: 'c1', name: 'X', start_date: '' }] });
     ctx.actionUpdateChore({ chore_id: 'c1', start_date: '2026-08-01' });
     expect(read('Chores')[0].start_date).toBe('2026-08-01');
+  });
+
+  it('actionAddChore persists monthly nth-weekday fields (#16)', () => {
+    const { ctx, read } = loadBackend();
+    ctx.actionAddChore({ name: 'Mop', frequency: 'monthly', monthly_week: 2, monthly_weekday: 5 });
+    const row = read('Chores')[0];
+    expect(row.monthly_week).toBe(2);
+    expect(row.monthly_weekday).toBe(5);
+  });
+});
+
+describe('generate-on-create (#17)', () => {
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 5, 28, 12, 0, 0)); });
+  afterEach(() => vi.useRealTimers());
+
+  it('actionAddChore generates today’s assignment when the chore is due today', () => {
+    const { ctx, read } = loadBackend();
+    ctx.actionAddChore({ name: 'Dishes', frequency: 'daily', default_assignee: 'me' });
+    const rows = read('Assignments');
+    expect(rows.length).toBe(1);
+    expect(rows[0].due_date).toBe('2026-06-28');
+    expect(rows[0].status).toBe('open');
+  });
+
+  it('actionAddChore does NOT generate when the chore is not due today', () => {
+    const { ctx, read } = loadBackend();
+    // Weekly on Wednesday (3); 2026-06-28 is a Sunday → not due.
+    ctx.actionAddChore({ name: 'Laundry', frequency: 'weekly', custom_days: '3' });
+    expect(read('Assignments').length).toBe(0);
   });
 });
 

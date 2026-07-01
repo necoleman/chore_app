@@ -764,6 +764,35 @@ Covers enhancements 10–15. Requires the `start_date` column on the Chores tab 
 
 ---
 
+## 19. Last-Done, Monthly nth-Weekday, Due-Today & Frequency Colors (v1.0.0)
+
+Covers enhancements 9, 16, 17, 18. Requires the new `monthly_week` / `monthly_weekday` columns on the Chores tab and the redeployed Apps Script.
+
+### LD-01 — "Last done" tag on the Chores screen (#9)
+**Preconditions:** A chore that has at least one completed (done) assignment.
+**Steps:** Open Manage Chores.
+**Expected:** The chore shows a "Last done: MMM D" tag reflecting the most recent completion (approved counts as done). A chore never completed shows no "Last done" tag. The value is display-only (not stored on the chore).
+
+### MNW-01 — Create a monthly "nth weekday" chore (#16)
+**Steps:** Add a chore, frequency **Monthly**, choose the **Day of week** toggle, select e.g. "Second" + "Friday". Save, then reopen the editor.
+**Expected:** The editor round-trips the selection (Second / Friday). On Manage Chores the "Next:" tag shows the correct upcoming date. Switching the toggle to **Day of month** clears the nth-weekday fields (and vice-versa) so only one style is stored.
+
+### MNW-02 — nth-weekday generates on the right day (#16)
+**Preconditions:** A monthly nth-weekday chore (e.g. second Friday). 
+**Steps:** Run `runNightlyGenerator` on the target nth weekday (and confirm it does NOT generate on other Fridays). Catch-up: set `last_generated_date` to last month and run after the target day this month.
+**Expected:** Exactly one assignment on the correct nth weekday; catch-up generates once if the day was missed. Existing day-of-month monthly chores still behave as before.
+
+### DUE-TODAY-01 — Chore created due today appears immediately (#17)
+**Steps:** As admin, add a chore whose schedule makes it due today (e.g. Daily, or Weekly on today's weekday). Return to Today (refresh).
+**Expected:** An assignment for the new chore appears on Today right away, without waiting for the nightly generator. Editing an existing chore so it becomes due today also surfaces it. Re-saving does not create a duplicate for the same day.
+
+### FREQ-COLOR-01 — Frequency color-coding on Today (#18)
+**Preconditions:** Open chores of daily, weekly, and other (monthly/interval/once) frequencies on Today.
+**Steps:** View the Today screen.
+**Expected:** Open cards are tinted — daily light blue, weekly (and custom) light green, all others light yellow. A pending-approval card still shows amber and a sent-back card still shows red (frequency tint does not override those). Done/skipped cards stay greyed out with no frequency tint.
+
+---
+
 ## Summary Table
 
 | Area | Total Cases | Security Cases |
@@ -786,7 +815,8 @@ Covers enhancements 10–15. Requires the `start_date` column on the Chores tab 
 | Tap Target, Overflow Menu & Sent-Back Feedback | 6 | — |
 | List Ordering, Uncheck, Overdue & One-Time | 14 | — |
 | Next-Due, First-Due, Sort, Description & Make-Unclaimed | 5 | — |
-| **Total** | **135** | **10** |
+| Last-Done, Monthly nth-Weekday, Due-Today & Frequency Colors | 5 | — |
+| **Total** | **140** | **10** |
 
 ---
 
@@ -930,3 +960,8 @@ Copy the table below into a spreadsheet. Fill in **Tester**, **Date**, **Result*
 | SORT-01 | NextDue/Sort/Unclaim | Sort by location/assignee/periodicity/next-due | | | | |
 | DESC-COLLAPSE-01 | NextDue/Sort/Unclaim | Collapsible description (both screens) | | | | |
 | UNCLAIM-01 | NextDue/Sort/Unclaim | Make a chore unclaimed from Today | | | | |
+| LD-01 | v1.0.0 | "Last done" tag on the Chores screen | | | | |
+| MNW-01 | v1.0.0 | Create a monthly "nth weekday" chore (round-trips) | | | | |
+| MNW-02 | v1.0.0 | nth-weekday generates on the right day (+catch-up) | | | | |
+| DUE-TODAY-01 | v1.0.0 | Chore created due today appears immediately | | | | |
+| FREQ-COLOR-01 | v1.0.0 | Frequency color-coding on Today (pending/rejected override) | | | | |

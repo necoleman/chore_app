@@ -4,7 +4,7 @@
   import ChoreForm from '../components/ChoreForm.svelte';
   import CollapsibleDescription from '../components/CollapsibleDescription.svelte';
   import { today } from '../lib/utils.js';
-  import { nextDueLabel, daysUntilDue } from '../lib/dueDates.js';
+  import { nextDueLabel, daysUntilDue, shortDateStr } from '../lib/dueDates.js';
 
   let chores = [];
   let people = [];
@@ -158,6 +158,9 @@
                 {#if nextDueLabel(chore, todayStr)}
                   <span class="tag tag--next">Next: {nextDueLabel(chore, todayStr)}</span>
                 {/if}
+                {#if chore.last_done}
+                  <span class="tag tag--last-done">Last done: {shortDateStr(chore.last_done)}</span>
+                {/if}
                 {#if chore.requires_approval === true || chore.requires_approval === 'TRUE'}
                   <span class="tag tag--review">Needs approval</span>
                 {/if}
@@ -310,6 +313,7 @@
   .tag--review { background: #fef3c7; color: #92400e; }
   .tag--location { background: #e0e7ff; color: #3730a3; }
   .tag--next { background: #ecfeff; color: #0e7490; }
+  .tag--last-done { background: #f3f4f6; color: #6b7280; }
   .tag--assignee { background: #dcfce7; color: #166534; }
   .tag--unclaimed { background: #f3f4f6; color: #6b7280; font-style: italic; }
 

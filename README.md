@@ -28,7 +28,7 @@ person_id | name | color | fcm_token | points_total | streak_current | streak_be
 
 **Chores**
 ```
-chore_id | name | location | description | points | frequency | custom_days | monthly_day | interval_days | once_date | start_date | last_generated_date | default_assignee | requires_approval | active
+chore_id | name | location | description | points | frequency | custom_days | monthly_day | monthly_week | monthly_weekday | interval_days | once_date | start_date | last_generated_date | default_assignee | requires_approval | active
 ```
 
 **Locations** (feeds the location dropdown in the chore editor — one row per allowed location)
@@ -405,7 +405,9 @@ Optional columns:
 Frequency-specific columns (leave blank when not applicable):
 - `weekly` → `custom_days`: weekday number 0–6 (0 = Sunday)
 - `custom` → `custom_days`: comma-separated day names, e.g. `monday,wednesday,friday`
-- `monthly` → `monthly_day`: day of month 1–31
+- `monthly` → either a fixed day of month **or** an nth-weekday:
+  - `monthly_day`: day of month 1–31 (clamped to the month's length), **or**
+  - `monthly_week` (1–4 = First…Fourth) + `monthly_weekday` (0–6, 0 = Sunday) for "nth weekday of the month", e.g. `monthly_week=2, monthly_weekday=5` = the second Friday. When both nth-weekday fields are set they take precedence over `monthly_day`. The 5th occurrence is not supported. Choose the style in the chore editor's monthly "Day of month / Day of week" toggle.
 - `interval` → `interval_days`: number of days between occurrences, e.g. `90`
 - `once` → `once_date`: a single date (`YYYY-MM-DD`) for a one-time task. The generator creates exactly one assignment on/after that date, then auto-archives the chore (`active=FALSE`) so it leaves the active list. It still appears in History.
 

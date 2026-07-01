@@ -49,10 +49,21 @@
     uncompleteAssignment(assignment.assignment_id);
     showUncheckConfirm = false;
   }
+
+  // Frequency color coding (#18): daily=blue, weekly/custom=green, others=yellow.
+  // Applied only to plain open cards so the pending (amber) / rejected (red)
+  // backgrounds and the done/skipped greying (opacity) still win.
+  $: freqTint = isOpen && !isPending && !isRejected && !isDone && !isSkipped;
+  $: freqClass =
+    assignment.frequency === 'daily'
+      ? 'card--freq-daily'
+      : assignment.frequency === 'weekly' || assignment.frequency === 'custom'
+        ? 'card--freq-weekly'
+        : 'card--freq-other';
 </script>
 
 <div
-  class="card"
+  class="card {freqTint ? freqClass : ''}"
   class:card--done={isDone}
   class:card--skipped={isSkipped}
   class:card--pending={isPending}
@@ -183,6 +194,12 @@
   .check-btn:active {
     opacity: 0.6;
   }
+
+  /* Frequency tint (#18) — plain open cards only. Declared before the status
+     classes below so .card--pending / .card--rejected override the background. */
+  .card--freq-daily { background: #eff6ff; border-color: #bfdbfe; }
+  .card--freq-weekly { background: #f0fdf4; border-color: #bbf7d0; }
+  .card--freq-other { background: #fefce8; border-color: #fef08a; }
 
   .card--done {
     opacity: 0.5;

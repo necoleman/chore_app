@@ -32,6 +32,7 @@ function actionToday(params) {
       chore_name:       chore.name || '',
       location:         chore.location || '',
       description:      chore.description || '',
+      frequency:        chore.frequency || '',
       points:           chore.points || 0,
       requires_approval: chore.requires_approval === true || chore.requires_approval === 'TRUE',
       person_id:        a.person_id || null,
@@ -68,7 +69,28 @@ function actionPeople(params) {
 // ─── GET: chores ──────────────────────────────────────────────────────────────
 
 function actionChores(params) {
-  return { chores: getRows('Chores') };
+  var chores = getRows('Chores');
+
+  // Compute "last done" per chore (#9): the most recent completion among done
+  // assignments, keyed by chore_id. Uses completed_at, falling back to due_date.
+  var lastDone = {};
+  getRows('Assignments').forEach(function(a) {
+    if (a.status !== 'done') return;
+    var when = a.completed_at || a.due_date || '';
+    if (!when) return;
+    if (!lastDone[a.chore_id] || when > lastDone[a.chore_id]) {
+      lastDone[a.chore_id] = when;
+    }
+  });
+
+  var result = chores.map(function(c) {
+    var row = {};
+    for (var k in c) { if (c.hasOwnProperty(k)) row[k] = c[k]; }
+    row.last_done = lastDone[c.chore_id] || '';
+    return row;
+  });
+
+  return { chores: result };
 }
 
 // ─── GET: locations ───────────────────────────────────────────────────────────
@@ -380,6 +402,8 @@ function actionAddChore(body) {
     frequency: body.frequency || 'daily',
     custom_days: body.custom_days || '',
     monthly_day: body.monthly_day || '',
+    monthly_week: body.monthly_week || '',
+    monthly_weekday: (body.monthly_weekday === 0 || body.monthly_weekday) ? body.monthly_weekday : '',
     interval_days: body.interval_days || '',
     once_date: body.once_date || '',
     start_date: body.start_date || '',
@@ -389,6 +413,11 @@ function actionAddChore(body) {
     active: true,
   });
   invalidateCache('Chores');
+
+  // If the chore is due today, generate its assignment now so it shows up on
+  // Today immediately instead of waiting for the nightly generator (#17).
+  generateTodayForChore(choreId);
+
   return { chore_id: choreId, success: true };
 }
 
@@ -400,13 +429,19 @@ function actionUpdateChore(body) {
 
   var updates = {};
   var allowed = ['name', 'location', 'description', 'points', 'frequency', 'custom_days',
-                 'monthly_day', 'interval_days', 'once_date', 'start_date', 'default_assignee', 'requires_approval', 'active'];
+                 'monthly_day', 'monthly_week', 'monthly_weekday', 'interval_days', 'once_date',
+                 'start_date', 'default_assignee', 'requires_approval', 'active'];
   allowed.forEach(function(field) {
     if (body.hasOwnProperty(field)) updates[field] = body[field];
   });
 
   updateRow('Chores', 'chore_id', choreId, updates);
   invalidateCache('Chores');
+
+  // Editing frequency/day/start_date may make the chore due today; surface it
+  // immediately. The same-day dedupe in the generator keeps this idempotent (#17).
+  generateTodayForChore(choreId);
+
   return { success: true };
 }
 

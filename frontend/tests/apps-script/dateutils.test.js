@@ -35,6 +35,19 @@ describe('isDueToday', () => {
     expect(due({ frequency: 'monthly', monthly_day: '15' }, new Date(2026, 5, 14))).toBe(false);
   });
 
+  it('monthly nth-weekday: matches the nth occurrence, plus catch-up', () => {
+    // June 2026 Fridays: 5, 12, 19, 26 (June 1 is a Monday).
+    const firstFriday = { frequency: 'monthly', monthly_week: 1, monthly_weekday: 5 };
+    expect(due(firstFriday, new Date(2026, 5, 5))).toBe(true);   // 1st Friday
+    expect(due(firstFriday, new Date(2026, 5, 12))).toBe(false); // 2nd Friday
+    const secondFriday = { frequency: 'monthly', monthly_week: 2, monthly_weekday: 5 };
+    expect(due(secondFriday, new Date(2026, 5, 12))).toBe(true);
+    // Catch-up: missed this month's 2nd Friday, now past it, last gen before this month.
+    expect(
+      due({ ...secondFriday, last_generated_date: '2026-05-08' }, new Date(2026, 5, 20))
+    ).toBe(true);
+  });
+
   it('interval: never-generated due now; elapsed vs not', () => {
     expect(due({ frequency: 'interval', interval_days: '7' }, new Date(2026, 5, 28))).toBe(true);
     expect(

@@ -22,6 +22,8 @@
         frequency: 'daily',
         custom_days: '',
         monthly_day: '',
+        monthly_week: '',
+        monthly_weekday: '',
         interval_days: '',
         once_date: '',
         start_date: '',
@@ -43,6 +45,41 @@
   let selectedDays = (form.custom_days || '').split(',').map((d) => d.trim()).filter(Boolean);
 
   $: form.custom_days = selectedDays.join(',');
+
+  const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const WEEK_ORDINALS = [
+    { value: 1, label: 'First' },
+    { value: 2, label: 'Second' },
+    { value: 3, label: 'Third' },
+    { value: 4, label: 'Fourth' },
+  ];
+
+  // Sheet values arrive as strings; coerce the nth-weekday fields to numbers so
+  // they match the numeric <option> values (Svelte binds with ===).
+  const hasNth =
+    form.monthly_week !== '' && form.monthly_week != null &&
+    form.monthly_weekday !== '' && form.monthly_weekday != null;
+  if (hasNth) {
+    form.monthly_week = parseInt(form.monthly_week, 10);
+    form.monthly_weekday = parseInt(form.monthly_weekday, 10);
+  }
+
+  // Monthly sub-mode (#16): 'day' = day-of-month, 'weekday' = nth weekday.
+  let monthlyMode = hasNth ? 'weekday' : 'day';
+
+  // Keep only the fields for the active sub-mode so the backend discriminator
+  // (both nth-weekday fields present ⇒ nth-weekday) stays unambiguous.
+  function setMonthlyMode(mode) {
+    monthlyMode = mode;
+    if (mode === 'day') {
+      form.monthly_week = '';
+      form.monthly_weekday = '';
+    } else {
+      form.monthly_day = '';
+      if (form.monthly_week === '' || form.monthly_week == null) form.monthly_week = 1;
+      if (form.monthly_weekday === '' || form.monthly_weekday == null) form.monthly_weekday = 5; // Friday
+    }
+  }
 
   function toggleDay(day) {
     if (selectedDays.includes(day)) {
@@ -145,10 +182,50 @@
       {/if}
 
       {#if form.frequency === 'monthly'}
-        <label class="field">
-          <span class="label">Day of month (1–31)</span>
-          <input type="number" min="1" max="31" bind:value={form.monthly_day} class="input input--sm" placeholder="e.g. 15" />
-        </label>
+        <div class="field">
+          <span class="label">Monthly schedule</span>
+          <div class="day-grid">
+            <button
+              type="button"
+              class="day-btn"
+              class:active={monthlyMode === 'day'}
+              on:click={() => setMonthlyMode('day')}
+            >
+              Day of month
+            </button>
+            <button
+              type="button"
+              class="day-btn"
+              class:active={monthlyMode === 'weekday'}
+              on:click={() => setMonthlyMode('weekday')}
+            >
+              Day of week
+            </button>
+          </div>
+        </div>
+
+        {#if monthlyMode === 'day'}
+          <label class="field">
+            <span class="label">Day of month (1–31)</span>
+            <input type="number" min="1" max="31" bind:value={form.monthly_day} class="input input--sm" placeholder="e.g. 15" />
+          </label>
+        {:else}
+          <div class="field">
+            <span class="label">Which weekday of the month</span>
+            <div class="nth-row">
+              <select bind:value={form.monthly_week} class="input">
+                {#each WEEK_ORDINALS as w (w.value)}
+                  <option value={w.value}>{w.label}</option>
+                {/each}
+              </select>
+              <select bind:value={form.monthly_weekday} class="input">
+                {#each WEEKDAYS as name, i}
+                  <option value={i}>{name}</option>
+                {/each}
+              </select>
+            </div>
+          </div>
+        {/if}
       {/if}
 
       {#if form.frequency === 'interval'}
@@ -282,6 +359,11 @@
     display: flex;
     gap: 6px;
     flex-wrap: wrap;
+  }
+
+  .nth-row {
+    display: flex;
+    gap: 8px;
   }
 
   .day-btn {

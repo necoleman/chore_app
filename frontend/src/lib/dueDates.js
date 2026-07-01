@@ -15,6 +15,18 @@ function parseLocalDate(str) {
 function daysInMonth(date) {
   return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
 }
+// Date of the nth (1–4) occurrence of a weekday (0=Sun…6=Sat) in a month (#16).
+function nthWeekdayOfMonth(year, month, weekday, n) {
+  const first = new Date(year, month, 1);
+  const offset = (weekday - first.getDay() + 7) % 7;
+  return new Date(year, month, 1 + offset + (n - 1) * 7);
+}
+function usesNthWeekday(chore) {
+  return (
+    chore.monthly_week !== '' && chore.monthly_week != null &&
+    chore.monthly_weekday !== '' && chore.monthly_weekday != null
+  );
+}
 function addDays(date, n) {
   const d = new Date(date);
   d.setDate(d.getDate() + n);
@@ -40,6 +52,13 @@ export function scheduledOn(chore, date) {
       return days.includes(DAY_NAMES[date.getDay()]);
     }
     case 'monthly': {
+      if (usesNthWeekday(chore)) {
+        const week = parseInt(chore.monthly_week, 10);
+        const weekday = parseInt(chore.monthly_weekday, 10);
+        if (!week || Number.isNaN(weekday)) return false;
+        const target = nthWeekdayOfMonth(date.getFullYear(), date.getMonth(), weekday, week);
+        return date.getDate() === target.getDate();
+      }
       const md = parseInt(chore.monthly_day, 10);
       if (!md) return false;
       return date.getDate() === Math.min(md, daysInMonth(date));
@@ -94,6 +113,15 @@ export function nextDueLabel(chore, todayStr = today()) {
   if (diff === 1) return 'Tomorrow';
   if (chore.frequency === 'weekly' || chore.frequency === 'custom') return WEEKDAY_FULL[d.getDay()];
   if (diff > 1 && diff <= 6) return WEEKDAY_FULL[d.getDay()];
+  return shortDate(d);
+}
+
+// Format a stored date/datetime string (YYYY-MM-DD or ISO) as e.g. "Jun 24".
+// Returns '' for empty/invalid input. Used for the "Last done" tag (#9).
+export function shortDateStr(str) {
+  if (!str) return '';
+  const d = parseLocalDate(str);
+  if (Number.isNaN(d.getTime())) return '';
   return shortDate(d);
 }
 

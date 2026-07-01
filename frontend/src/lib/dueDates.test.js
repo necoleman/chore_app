@@ -23,6 +23,17 @@ describe('nextDueDate', () => {
     expect(nd({ frequency: 'monthly', monthly_day: '5' })).toBe('2026-07-05'); // already past in June
   });
 
+  it('monthly nth-weekday → next matching occurrence (this month or next)', () => {
+    // June 2026: Fridays fall on 5, 12, 19, 26 (June 1 is a Monday).
+    // From Sun June 28, the 2nd Friday (June 12) has passed → July's 2nd Friday.
+    // July 2026: 1st is Wed, so Fridays are 3, 10, 17, 24 → 2nd = July 10.
+    expect(nd({ frequency: 'monthly', monthly_week: 2, monthly_weekday: 5 })).toBe('2026-07-10');
+    // 1st Friday already past in June → July 3.
+    expect(nd({ frequency: 'monthly', monthly_week: 1, monthly_weekday: 5 })).toBe('2026-07-03');
+    // 4th Monday: June Mondays 1,8,15,22 → June 22 past → July's 4th Monday (Jul 27).
+    expect(nd({ frequency: 'monthly', monthly_week: 4, monthly_weekday: 1 })).toBe('2026-07-27');
+  });
+
   it('interval → from last_generated_date; overdue collapses to today', () => {
     expect(nd({ frequency: 'interval', interval_days: '7', last_generated_date: '2026-06-25' })).toBe('2026-07-02');
     expect(nd({ frequency: 'interval', interval_days: '7', last_generated_date: '2026-06-01' })).toBe('2026-06-28'); // overdue → today
@@ -45,6 +56,12 @@ describe('nextDueDate', () => {
 describe('scheduledOn', () => {
   it('monthly clamps to the last day of short months', () => {
     expect(scheduledOn({ frequency: 'monthly', monthly_day: '31' }, new Date(2026, 1, 28))).toBe(true); // Feb 28
+  });
+
+  it('monthly nth-weekday matches only the nth occurrence', () => {
+    const firstFriday = { frequency: 'monthly', monthly_week: 1, monthly_weekday: 5 };
+    expect(scheduledOn(firstFriday, new Date(2026, 5, 5))).toBe(true);   // June 5 = 1st Friday
+    expect(scheduledOn(firstFriday, new Date(2026, 5, 12))).toBe(false); // June 12 = 2nd Friday
   });
 });
 
