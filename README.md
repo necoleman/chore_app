@@ -401,8 +401,8 @@ Optional columns:
 - `location` — category shown on the chore (e.g. `Kitchen`), used to tell apart same-named chores. In the in-app editor this is a dropdown fed by the `Locations` tab.
 - `description` — free-text notes about what the chore involves; shown on the chore card (collapsible if long).
 - `start_date` — first date the chore is due (`YYYY-MM-DD`). Blank = starts immediately. The generator won't create assignments before this date. Set it via the chore editor's "First due date" field (e.g. to schedule a monthly/interval chore's first occurrence).
-- `lead_days` — how many days before a non-daily chore's due date its assignment should appear on Today (a "grace window"). Blank falls back to a frequency default (weekly/custom 4, monthly 7, interval `min(N−1, 7)`, once/daily 0). *(Column reserved; the generator begins honoring it in a later release.)*
-- `missed_count` (Assignments) — how many times a still-open assignment has been carried over past a recurrence; each carry-over also deducts the chore's points from the assignee's leaderboard total. *(Written by the generator; reserved until the generator rewrite ships.)*
+- `lead_days` — the chore's "grace window": how many days it is available to be done, **inclusive of the due date**, so it appears on Today `lead_days − 1` days early. Blank falls back to a frequency default (weekly/custom 4, monthly 7, interval `min(N, 7)`, once/daily 1). E.g. a weekly chore due Sunday with `lead_days` 4 appears the previous Thursday; a monthly chore with 7 appears the previous Monday. Set it via the chore editor's "Days to complete (appears early)" field.
+- `missed_count` (Assignments) — how many times a still-open assignment has been carried past a recurrence. Instead of piling up duplicate overdue rows, the generator keeps one assignment, bumps `missed_count`, and **deducts the chore's points from the assignee's leaderboard total once per missed recurrence** (clamped at 0). Days overdue is shown from `due_date` (not stored).
 
 Frequency-specific columns (leave blank when not applicable):
 - `weekly` → `custom_days`: weekday number 0–6 (0 = Sunday)
@@ -413,7 +413,7 @@ Frequency-specific columns (leave blank when not applicable):
 - `interval` → `interval_days`: number of days between occurrences, e.g. `90`
 - `once` → `once_date`: a single date (`YYYY-MM-DD`) for a one-time task. The generator creates exactly one assignment on/after that date, then auto-archives the chore (`active=FALSE`) so it leaves the active list. It still appears in History.
 
-The nightly generator runs at 12:01am and creates `Assignments` rows for any chore due that day. To test it immediately, run `runNightlyGenerator` manually from the Apps Script editor.
+The nightly generator runs at 12:01am. For each active chore it finds the next occurrence and, once today reaches that occurrence's **appear date** (`due − (lead_days − 1)`), creates the assignment with the real (possibly future) due date. If a prior occurrence is still open when the next one comes due, it does **not** create a duplicate — it carries the one assignment over, bumps `missed_count`, and deducts the chore's points from the assignee (see `lead_days` / `missed_count` above). To test it immediately, run `runNightlyGenerator` manually from the Apps Script editor.
 
 **Today screen behavior:** Finished chores (done/skipped) gray out and sort to the bottom of each section; pending-approval chores show in amber (the assignee sees their own as "Waiting for review"). Unfinished chores from previous days stay on Today flagged **Overdue** (sorted to the top) until they're completed or an admin bumps/skips them — there's no age cutoff, so use bump/skip to clear a backlog. A completed chore can be **unchecked** (undo) by the assignee or an admin via the card's "Undo" button, which reverts it to open and removes any awarded points — *except* chores that a parent has already **approved**, which cannot be unchecked.
 

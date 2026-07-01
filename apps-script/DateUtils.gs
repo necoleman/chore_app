@@ -32,68 +32,102 @@ function usesNthWeekday(chore) {
          chore.monthly_weekday !== '' && chore.monthly_weekday != null;
 }
 
-/**
- * Returns true if the chore is due today (or is overdue, for monthly/interval).
- * `chore` is a row object from the Chores tab.
- * `today` is a Date object.
- */
-function isDueToday(chore, today) {
+// ─── Lead-time / next-occurrence scheduling (v1.3.0, #21 + #23) ───────────────
+
+/** Parse a `yyyy-MM-dd` (or ISO) string into a local Date at midnight. */
+function parseISODate(str) {
+  var p = String(str).slice(0, 10).split('-');
+  return new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10));
+}
+
+function addDaysDate(date, n) {
+  var d = new Date(date.getTime());
+  d.setDate(d.getDate() + n);
+  return d;
+}
+
+// Pure calendar predicate: is `date` a scheduled DUE day for this chore?
+// (daily/weekly/custom/monthly only — no start_date, catch-up, or lead.)
+function isScheduledDueDay(chore, date) {
   var freq = chore.frequency;
-
-  // First-due date: never generate before the chore's start_date.
-  if (chore.start_date && formatDate(today) < chore.start_date) return false;
-
   if (freq === 'daily') return true;
-
-  if (freq === 'once') {
-    if (chore.last_generated_date) return false;        // already generated → never again
-    if (!chore.once_date) return false;
-    return formatDate(today) >= chore.once_date;         // due on/after the target date (catch-up)
-  }
-
-  if (freq === 'weekly') {
-    var choreDay = parseInt(chore.custom_days, 10); // store weekday as 0–6
-    return today.getDay() === choreDay;
-  }
-
+  if (freq === 'weekly') return date.getDay() === parseInt(chore.custom_days, 10);
   if (freq === 'custom') {
     var days = (chore.custom_days || '').toLowerCase().split(',').map(function(d) { return d.trim(); });
-    return days.indexOf(DAY_NAMES[today.getDay()]) !== -1;
+    return days.indexOf(DAY_NAMES[date.getDay()]) !== -1;
   }
-
   if (freq === 'monthly') {
-    var targetDay; // the day-of-month this chore is due in `today`'s month
-
+    var targetDay;
     if (usesNthWeekday(chore)) {
-      // nth-weekday sub-mode (#16), e.g. "second Friday".
       var week = parseInt(chore.monthly_week, 10);
-      var weekday = parseInt(chore.monthly_weekday, 10);
-      if (!week || isNaN(weekday)) return false;
-      targetDay = nthWeekdayOfMonth(today.getFullYear(), today.getMonth(), weekday, week).getDate();
+      var wd = parseInt(chore.monthly_weekday, 10);
+      if (!week || isNaN(wd)) return false;
+      targetDay = nthWeekdayOfMonth(date.getFullYear(), date.getMonth(), wd, week).getDate();
     } else {
-      var monthlyDay = parseInt(chore.monthly_day, 10);
-      if (!monthlyDay) return false;
-      targetDay = Math.min(monthlyDay, daysInMonth(today)); // clamp to month length
+      var md = parseInt(chore.monthly_day, 10);
+      if (!md) return false;
+      targetDay = Math.min(md, daysInMonth(date));
     }
+    return date.getDate() === targetDay;
+  }
+  return false;
+}
 
-    if (today.getDate() === targetDay) return true;
+// The "grace window" length in days (#23): how many days a chore is available to
+// be done, inclusive of the due date. A stored `lead_days` wins; otherwise a
+// per-frequency default. Weekly due Sunday with lead 4 → appears Thursday
+// (Thu/Fri/Sat/Sun); monthly lead 7 → appears the previous Monday.
+function effectiveLeadDays(chore) {
+  var raw = parseInt(chore.lead_days, 10);
+  if (raw && raw >= 1) return raw;
+  switch (chore.frequency) {
+    case 'weekly':
+    case 'custom':
+      return 4;
+    case 'monthly':
+      return 7;
+    case 'interval':
+      var n = parseInt(chore.interval_days, 10) || 1;
+      return Math.max(1, Math.min(n, 7));
+    default: // daily, once
+      return 1;
+  }
+}
 
-    // Catch-up: if last_generated_date is before the first of this month
-    // and we're past when it should have run, generate it now.
-    if (chore.last_generated_date) {
-      var lastGen = new Date(chore.last_generated_date);
-      if (lastGen < firstOfMonth(today) && today.getDate() >= targetDay) return true;
-    }
-    return false;
+// Days before the due date the assignment first appears (lead window − 1).
+function appearOffsetDays(chore) {
+  return effectiveLeadDays(chore) - 1;
+}
+
+// The due date of the NEXT occurrence to schedule — strictly after the last
+// generated one (anchored on `last_generated_date`), or the first occurrence if
+// never generated. Respects `start_date`. Returns a Date, or null if none.
+function nextDueForChore(chore, today) {
+  var freq = chore.frequency;
+  var lastGen = chore.last_generated_date ? parseISODate(chore.last_generated_date) : null;
+  var start = chore.start_date ? parseISODate(chore.start_date) : null;
+
+  if (freq === 'once') {
+    if (chore.last_generated_date) return null;   // one-and-done
+    if (!chore.once_date) return null;
+    return parseISODate(chore.once_date);
   }
 
   if (freq === 'interval') {
-    var intervalDays = parseInt(chore.interval_days, 10);
-    if (!intervalDays) return false;
-    if (!chore.last_generated_date) return true; // never generated → due now
-    var lastGen = new Date(chore.last_generated_date);
-    return daysBetween(today, lastGen) >= intervalDays;
+    var n = parseInt(chore.interval_days, 10);
+    if (!n) return null;
+    if (!lastGen) return (start && start.getTime() > today.getTime()) ? start : today;
+    return addDaysDate(lastGen, n);
   }
 
-  return false;
+  // Calendar frequencies: scan forward from the day after the last occurrence
+  // (or the first eligible day) for the next scheduled due day.
+  var from = lastGen ? addDaysDate(lastGen, 1) : ((start && start.getTime() > today.getTime()) ? start : today);
+  if (start && start.getTime() > from.getTime()) from = start;
+  if (freq === 'daily') return from;
+  for (var i = 0; i < 400; i++) {
+    var d = addDaysDate(from, i);
+    if (isScheduledDueDay(chore, d)) return d;
+  }
+  return null;
 }

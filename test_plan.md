@@ -837,6 +837,35 @@ Covers enhancements 20 and 22, plus the per-card "Due …" tag (display groundwo
 
 ---
 
+## 22. Lead-Time Appearance & Missed-Chore Penalty (v1.3.0)
+
+Covers enhancements 21 and 23 — the generator rewrite. **Requires** the redeployed Apps Script **and** the new sheet columns: `lead_days` on **Chores** and `missed_count` on **Assignments**. Run `runNightlyGenerator` manually from the Apps Script editor to drive these without waiting for 12:01am.
+
+### LEAD-01 — Non-daily chore appears early with its real due date
+**Preconditions:** A weekly chore due Sunday, `lead_days` blank (default 4).
+**Steps:** On the previous **Thursday**, run the generator; check Today.
+**Expected:** An assignment appears with **due_date = the upcoming Sunday** (not Thursday). Its card shows **Due Sunday** and is *not* flagged overdue. Running the generator on the previous Wednesday produces nothing (window not open yet). A monthly chore (`lead_days` 7) appears the previous Monday.
+
+### LEAD-02 — Editor lead field round-trips
+**Steps:** Edit a weekly chore, set **Days to complete (appears early)** to 2, save, reopen.
+**Expected:** The value persists (`lead_days` = 2 on the Chores row) and the chore now appears only 1 day early. Blank shows the frequency default as placeholder.
+
+### MISS-01 — Missed daily chore carries over (no duplicate) + point penalty
+**Preconditions:** A daily chore assigned to a child, worth N points, with yesterday's assignment still **open**.
+**Steps:** Run the generator (simulating the next day).
+**Expected:** Still **one** open assignment for that chore (no duplicate), its `missed_count` incremented, the card shows **Overdue 1d / missed 1×**, and the child's leaderboard total dropped by **N** (never below 0). Completing it clears it; the next day generates a fresh assignment.
+
+### MISS-02 — Penalty is once per recurrence, not per day
+**Preconditions:** A weekly chore (lead 4) left open past its Sunday due date.
+**Steps:** Run the generator on Mon–Wed (still overdue, before the next appear day), then on the next **Thursday** (next recurrence).
+**Expected:** No point deduction Mon–Wed (card just shows growing **Overdue Nd**); exactly **one** deduction + `missed_count` bump on Thursday. Never more than one open row for the chore.
+
+### MISS-03 — No penalty for completed or unassigned
+**Steps:** (a) Complete an overdue chore before the next recurrence; (b) leave an **unassigned** overdue chore open across a recurrence.
+**Expected:** (a) no penalty, a fresh assignment generates normally; (b) it still carries over and bumps `missed_count`, but no points are deducted (nobody to penalize).
+
+---
+
 ## Summary Table
 
 | Area | Total Cases | Security Cases |
@@ -862,7 +891,8 @@ Covers enhancements 20 and 22, plus the per-card "Due …" tag (display groundwo
 | Last-Done, Monthly nth-Weekday, Due-Today & Frequency Colors | 5 | — |
 | Quick-Add from Today | 3 | — |
 | Quick-Add Assignee, Today Sort & Due Tag | 4 | — |
-| **Total** | **147** | **10** |
+| Lead-Time Appearance & Missed-Chore Penalty | 5 | — |
+| **Total** | **152** | **10** |
 
 ---
 
@@ -1018,3 +1048,8 @@ Copy the table below into a spreadsheet. Fill in **Tester**, **Date**, **Result*
 | QAA-02 | v1.2.0 | Non-admin sees no assignee field | | | | |
 | TSORT-01 | v1.2.0 | Sort the Today screen (within sections) | | | | |
 | DUETAG-01 | v1.2.0 | "Due …" tag on every card | | | | |
+| LEAD-01 | v1.3.0 | Non-daily chore appears early with real due date | | | | |
+| LEAD-02 | v1.3.0 | Editor lead field round-trips | | | | |
+| MISS-01 | v1.3.0 | Missed daily carries over + point penalty | | | | |
+| MISS-02 | v1.3.0 | Penalty once per recurrence, not per day | | | | |
+| MISS-03 | v1.3.0 | No penalty for completed / unassigned | | | | |

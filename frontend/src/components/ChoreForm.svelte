@@ -27,6 +27,7 @@
         interval_days: '',
         once_date: '',
         start_date: '',
+        lead_days: '',
         default_assignee: '',
         requires_approval: false,
         active: true,
@@ -45,6 +46,16 @@
   let selectedDays = (form.custom_days || '').split(',').map((d) => d.trim()).filter(Boolean);
 
   $: form.custom_days = selectedDays.join(',');
+
+  // Lead window (#23) applies to non-daily / non-once cadences. The placeholder
+  // shows the per-frequency default used when left blank.
+  const LEAD_FREQS = ['weekly', 'custom', 'monthly', 'interval'];
+  $: leadDefault =
+    form.frequency === 'monthly'
+      ? 7
+      : form.frequency === 'interval'
+        ? Math.max(1, Math.min(parseInt(form.interval_days, 10) || 1, 7))
+        : 4;
 
   const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const WEEK_ORDINALS = [
@@ -246,6 +257,20 @@
         <label class="field">
           <span class="label">First due date (optional)</span>
           <input type="date" bind:value={form.start_date} class="input input--sm" />
+        </label>
+      {/if}
+
+      {#if LEAD_FREQS.includes(form.frequency)}
+        <label class="field">
+          <span class="label">Days to complete (appears early)</span>
+          <input
+            type="number"
+            min="1"
+            max="31"
+            bind:value={form.lead_days}
+            class="input input--sm"
+            placeholder={`default ${leadDefault}`}
+          />
         </label>
       {/if}
 

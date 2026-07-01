@@ -116,6 +116,15 @@ export function nextDueLabel(chore, todayStr = today()) {
   return shortDate(d);
 }
 
+// The date an assignment first appears on Today: due_date minus the lead window
+// (leadDays − 1 days early; leadDays is the effective value sent by the backend,
+// defaulting to 1 = appears on its due date). Returns a yyyy-MM-dd string.
+export function appearDate(dueStr, leadDays) {
+  const lead = parseInt(leadDays, 10);
+  const offset = lead && lead > 1 ? lead - 1 : 0;
+  return formatDate(addDays(parseLocalDate(dueStr), -offset));
+}
+
 // Friendly label for a specific assignment's due date, shown on every Today
 // card. Today/Tomorrow, a weekday name for the next few days, otherwise a short
 // date. Past dates (overdue) fall through to the short date, e.g. "Jun 28".

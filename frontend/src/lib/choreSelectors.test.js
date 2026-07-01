@@ -47,6 +47,20 @@ describe('filterTodayAssignments', () => {
     expect(filterTodayAssignments([a({ due_date: undefined })], TODAY)).toEqual([]);
     expect(filterTodayAssignments(undefined, TODAY)).toEqual([]);
   });
+
+  it('shows a future-due chore once inside its lead window (#23)', () => {
+    // TODAY = 2026-06-28. Due 07-01 with lead 4 → appears 06-28 (shown);
+    // due 07-02 with lead 4 → appears 06-29 (not yet). No lead_days → appears on due date.
+    const list = [
+      a({ assignment_id: 'appeared', due_date: '2026-07-01', lead_days: 4, status: 'open' }),
+      a({ assignment_id: 'not-yet', due_date: '2026-07-02', lead_days: 4, status: 'open' }),
+      a({ assignment_id: 'no-lead', due_date: '2026-07-01', status: 'open' }),
+    ];
+    const ids = filterTodayAssignments(list, TODAY).map((x) => x.assignment_id);
+    expect(ids).toContain('appeared');
+    expect(ids).not.toContain('not-yet');
+    expect(ids).not.toContain('no-lead');
+  });
 });
 
 describe('rankAssignment', () => {

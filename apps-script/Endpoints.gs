@@ -33,7 +33,7 @@ function actionToday(params) {
       location:         chore.location || '',
       description:      chore.description || '',
       frequency:        chore.frequency || '',
-      lead_days:        chore.lead_days || '',
+      lead_days:        chore.name ? effectiveLeadDays(chore) : '',
       points:           chore.points || 0,
       requires_approval: chore.requires_approval === true || chore.requires_approval === 'TRUE',
       person_id:        a.person_id || null,

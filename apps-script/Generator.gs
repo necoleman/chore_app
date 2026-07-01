@@ -2,97 +2,130 @@
 
 function runNightlyGenerator() {
   var today = new Date();
-  var todayISO = formatDate(today);
 
   var chores = getRows('Chores');
-  var existingToday = getRows('Assignments').filter(function(a) {
-    return a.due_date === todayISO;
-  });
-
-  // Index existing assignments by chore_id to detect duplicates.
-  // Note: there may be multiple assignments for the same chore (e.g. manual
-  // assign + auto), so we track all of them.
-  var existingChoreIds = {};
-  existingToday.forEach(function(a) {
-    existingChoreIds[a.chore_id] = true;
-  });
+  var allAssignments = getRows('Assignments');
+  var people = getRows('People');
 
   chores.forEach(function(chore) {
-    generateAssignmentIfDue(chore, today, existingChoreIds);
+    processChoreGeneration(chore, today, allAssignments, people);
   });
 
   invalidateCache('Assignments');
   invalidateCache('Chores');
-  Logger.log('Nightly generator done for ' + todayISO);
+  invalidateCache('People');
+  Logger.log('Nightly generator done for ' + formatDate(today));
 }
 
-// ─── Single-chore generation ─────────────────────────────────────────────────
+// ─── Single-chore generation / carry-over ─────────────────────────────────────
 //
-// Generates today's assignment for one chore if it is active and due. Shared by
-// the nightly generator and by add/update-chore so a chore that becomes due
-// today surfaces immediately instead of waiting for the next nightly run.
+// Surfaces (or carries over) one chore's assignment. Shared by the nightly
+// generator and by add/update-chore (#17). Handles lead-time early appearance
+// (#23) and the missed-chore collapse + points penalty (#21):
 //
-// `existingChoreIds` maps chore_id → true for chores already assigned today, to
-// avoid duplicates. It is optional; when omitted the caller is responsible for
-// having checked (the nightly generator always passes it).
+//   • Nothing happens until today reaches the next occurrence's appear date
+//     (due − (leadDays − 1)), or its start_date.
+//   • If that occurrence already has an assignment, we only advance the anchor.
+//   • If a PRIOR occurrence is still open when the next one appears, we DON'T
+//     create a second row — we deduct the chore's points from the assignee
+//     (once per recurrence), bump `missed_count`, and advance the anchor.
+//   • Otherwise we create the assignment with due_date = the real due date
+//     (which may be in the future during the lead window).
 //
-// Returns the new assignment_id, or null if nothing was generated. Does NOT
-// invalidate caches — callers do that once after their batch.
-function generateAssignmentIfDue(chore, today, existingChoreIds) {
+// `allAssignments` is the current Assignments rows (mutated in place so repeat
+// calls in the same run dedupe). `people` is the People rows (for the penalty).
+// Does NOT invalidate caches — callers do that once after their batch.
+// Returns the new assignment_id, or null when nothing was created.
+function processChoreGeneration(chore, today, allAssignments, people) {
   var active = chore.active === true || chore.active === 'TRUE';
   if (!active) return null;
 
-  // Skip if already generated for today.
-  if (existingChoreIds && existingChoreIds[chore.chore_id]) return null;
+  // Hard start guard: nothing appears before start_date (even in the lead window).
+  if (chore.start_date && formatDate(today) < chore.start_date) return null;
 
-  if (!isDueToday(chore, today)) return null;
+  var nextDue = nextDueForChore(chore, today);
+  if (!nextDue) return null;
 
-  var todayISO = formatDate(today);
-  var assignmentId = chore.chore_id + '_' + todayISO.replace(/-/g, '');
+  // Not yet within the lead window for this occurrence.
+  var appearDate = addDaysDate(nextDue, -appearOffsetDays(chore));
+  if (formatDate(today) < formatDate(appearDate)) return null;
+
+  var nextDueISO = formatDate(nextDue);
+  var mine = allAssignments.filter(function(a) { return a.chore_id === chore.chore_id; });
+
+  // Already have this occurrence — just record the anchor and stop.
+  var existing = mine.find(function(a) { return a.due_date === nextDueISO; });
+  if (existing) {
+    stampLastGenerated(chore, nextDueISO);
+    return null;
+  }
+
+  // A prior occurrence is still open → collapse + penalize instead of duplicating.
+  var openPrior = mine.find(function(a) { return a.status === 'open' && a.due_date < nextDueISO; });
+  if (openPrior) {
+    var points = parseInt(chore.points, 10) || 0;
+    if (points > 0 && openPrior.person_id) {
+      incrementPoints(openPrior.person_id, -points, people);
+    }
+    var missed = (parseInt(openPrior.missed_count, 10) || 0) + 1;
+    updateRow('Assignments', 'assignment_id', openPrior.assignment_id, { missed_count: missed });
+    openPrior.missed_count = missed;
+    stampLastGenerated(chore, nextDueISO);
+    return null;
+  }
+
+  // Fresh occurrence — create the assignment (due_date may be in the future).
+  var assignmentId = chore.chore_id + '_' + nextDueISO.replace(/-/g, '');
   appendRow('Assignments', {
     assignment_id: assignmentId,
     chore_id: chore.chore_id,
     person_id: chore.default_assignee || '',
-    due_date: todayISO,
+    due_date: nextDueISO,
     status: 'open',
     assigned_by: 'auto',
   });
+  // Reflect the new row locally so later calls in this run dedupe against it.
+  allAssignments.push({
+    assignment_id: assignmentId,
+    chore_id: chore.chore_id,
+    person_id: chore.default_assignee || '',
+    due_date: nextDueISO,
+    status: 'open',
+  });
 
-  // Update last_generated_date for monthly/interval/once chores so catch-up
-  // logic has an accurate anchor point for the next run. One-time ("once")
-  // chores also auto-archive (active=false) so they leave the active list.
-  if (chore.frequency === 'monthly' || chore.frequency === 'interval' || chore.frequency === 'once') {
-    var choreUpdates = { last_generated_date: todayISO };
-    if (chore.frequency === 'once') choreUpdates.active = false;
-    updateRow('Chores', 'chore_id', chore.chore_id, choreUpdates);
-  }
+  var choreUpdates = { last_generated_date: nextDueISO };
+  if (chore.frequency === 'once') choreUpdates.active = false; // one-and-done
+  updateRow('Chores', 'chore_id', chore.chore_id, choreUpdates);
+  chore.last_generated_date = nextDueISO;
 
-  // Send immediate push notification if the chore has a default assignee.
   if (chore.default_assignee) {
     sendAssignmentNotification(assignmentId, chore.default_assignee);
   }
-
   return assignmentId;
 }
 
-// Generates today's assignment for a single chore_id on demand (used after
-// add/update-chore). Reads current Assignments to dedupe against anything
-// already scheduled today, then invalidates caches if it created a row.
+// Advance the chore's occurrence anchor (idempotent).
+function stampLastGenerated(chore, dueISO) {
+  if (chore.last_generated_date === dueISO) return;
+  updateRow('Chores', 'chore_id', chore.chore_id, { last_generated_date: dueISO });
+  chore.last_generated_date = dueISO;
+}
+
+// Generates on demand for a single chore_id (used after add/update-chore, #17)
+// so a chore that appears today surfaces immediately instead of waiting for the
+// nightly run. Idempotent via the same occurrence/anchor logic.
 function generateTodayForChore(choreId) {
   var chore = getRows('Chores').find(function(c) { return c.chore_id === choreId; });
   if (!chore) return null;
 
   var today = new Date();
-  var todayISO = formatDate(today);
-  var existingChoreIds = {};
-  getRows('Assignments').forEach(function(a) {
-    if (a.due_date === todayISO) existingChoreIds[a.chore_id] = true;
-  });
+  var allAssignments = getRows('Assignments');
+  var people = getRows('People');
 
-  var assignmentId = generateAssignmentIfDue(chore, today, existingChoreIds);
-  if (assignmentId) {
-    invalidateCache('Assignments');
-    invalidateCache('Chores');
-  }
+  var assignmentId = processChoreGeneration(chore, today, allAssignments, people);
+
+  invalidateCache('Assignments');
+  invalidateCache('Chores');
+  invalidateCache('People');
   return assignmentId;
 }
