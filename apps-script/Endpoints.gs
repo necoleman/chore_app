@@ -17,6 +17,10 @@ function actionToday(params) {
   // completed. Non-terminal items (open/pending_review/rejected) persist
   // regardless of date so overdue chores stay on Today until resolved or bumped.
   var relevant = assignments.filter(function(a) {
+    // Skip "ghost" assignments whose chore no longer exists (#11) — e.g. the
+    // chore row was deleted from the sheet. (Inactive chores are NOT skipped:
+    // one-time chores auto-archive but their assignment must still show.)
+    if (!choreMap[a.chore_id]) return false;
     if (a.status === 'skipped' || a.status === 'done') {
       return a.due_date === today;
     }
@@ -118,6 +122,7 @@ function actionHistory(params) {
 
   var terminal = ['done', 'skipped', 'rejected'];
   var filtered = assignments.filter(function(a) {
+    if (!choreMap[a.chore_id]) return false; // skip ghosts of deleted chores (#11)
     if (terminal.indexOf(a.status) === -1) return false;
     if (personFilter && a.person_id !== personFilter) return false;
     return true;

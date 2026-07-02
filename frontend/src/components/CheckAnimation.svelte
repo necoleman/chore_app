@@ -50,6 +50,9 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    /* Decorative — let taps fall through to the parent button so iOS Safari
+       reliably fires its click (the circle is a claim/complete target). */
+    pointer-events: none;
   }
 
   .check-wrap svg {

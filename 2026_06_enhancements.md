@@ -1,7 +1,7 @@
 # List of enhancements and bugfixes
 
 Rev. 2026-07-01
-App version 1.3.0
+App version 1.3.1
 
 ## Issue log
 
@@ -14,6 +14,10 @@ ID | Platform | Permissions level | Browser | Issue | Resolution
 4 | iOS | Admin | Safari | Clicking "move date" or "reassign" in the three dot drop down does not give you the date screen or reassign screen when you click on them for a chore assigned to me - it only works if I click on them for a chore assigned to someone else. Needs fixing! | Resolved (v0.2.2) — same root cause as #3 (menu taps bubbled to the card's complete handler); fixed by removing the card handler + `stopPropagation` on the menu items
 5 | iOS | Admin/User | Safari | When admin approves or does not approve a chore marked as complete by a child user, they are allowed to add a comment if marking to send the chore back - however, it does not appear that that comment is then displayed to the child user. The child user should have the chore unchecked in their bucket again (as currently happens) but should also see the feedback. Maybe the chore should have on it text like (example is for clean bathroom task): Chore sent back by admin user: The floor is still dirty, please reclean it. Everything else is fine. | Resolved (v0.2.2) — reject sets status `open` (not `rejected`), so the note was never shown; the card now displays "Sent back by {reviewer}: {note}" whenever a review note is present, cleared when the child re-completes
 6 | iOS | Admin | Safari | Figure out what "Did it" means on the Chores screen - seems to mean nothing. I think it's not necessary. I think just having edit is ok. | Resolved (v0.2.2) — "✓ Did it" removed entirely (button + `log_done` endpoint); Manage Chores rows now show only Edit
+8	| iOS | admin |	safari | When adding a weekly chore, it isn't possible to type anything into the "Weekday" field - probably because there isn't a header for that in the Chores tab. This seems to prevent it from being added to Assignments (it does appear in the Chores tab, but not in Assignments and does not appear in Today on the app).	| Resolved (v1.3.1) — a reactive `$: form.custom_days = selectedDays.join(',')` re-fired on every form change (incl. typing the weekday, which also binds `custom_days`), wiping it → blank `custom_days` → generator never matched. Sync moved into `toggleDay` (custom path only); the weekly field is now a Sunday–Saturday dropdown.
+9	| iOS | admin |	safari | When I create an interval tab and set it to first be due on July 5th, it shows up properly in the Chores tab but is not added to Assignments and thus does not appear on the Today tab in the app.| Resolved (v1.3.1) — the generator was correct (it creates the assignment on/after `start_date`), but the hard start guard suppressed the lead window. `start_date` is now the first occurrence's due date and the lead window applies, so the chore surfaces early (e.g. as "Due Jul 5") instead of only appearing on the day.
+10	| iOS | admin |	safari | On the Today screen, hitting "Tap to claim" doesn't do anything. On desktop and android, chores can be claimed by tapping the place where checkmarks happen. On ios safari chores don't appear to be claimable at all.	| Resolved (v1.3.1) — the "Tap to claim" text was a passive label; it's now a real button. Also added `type="button"` to the circle and `pointer-events:none` to the decorative check SVG so iOS reliably fires the tap. *(Verify on device.)*
+11	| iOS | admin |	safari | Assignment and chores tabs are not synced. When a chore is deleted, the assignments that refer to it need to be deleted.	| Resolved (v1.3.1) — `actionToday`/`actionHistory` now skip assignments whose `chore_id` has no matching Chores row, so deleting a chore's row makes its "ghost" cards disappear. (Read-side only — no overnight deletions, to avoid a sheet typo cascading into data loss.)
 
 
 ## Enhancements

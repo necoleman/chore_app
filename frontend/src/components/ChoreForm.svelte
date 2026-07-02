@@ -42,13 +42,21 @@
 
   let saving = false;
 
-  // For custom days — track as checkboxes
+  // For custom days — track as checkboxes. NOTE: `custom_days` is synced
+  // imperatively in toggleDay (NOT via a reactive `$:`). A reactive sync reads
+  // and writes `form`, so it re-fires on any form change — including typing in
+  // the weekly weekday field (which also binds custom_days), wiping it (#8).
   let selectedDays = (form.custom_days || '').split(',').map((d) => d.trim()).filter(Boolean);
-
-  $: form.custom_days = selectedDays.join(',');
 
   // Lead window (#23) applies to non-daily / non-once cadences. The placeholder
   // shows the per-frequency default used when left blank.
+  // Ensure a weekly chore always has a valid 0–6 weekday so the <select> and the
+  // stored value agree (a blank/leftover value would show Sunday but save empty).
+  // Guarded so it only fills a missing value — never overwrites a real choice.
+  $: if (form.frequency === 'weekly' && !/^[0-6]$/.test(String(form.custom_days))) {
+    form.custom_days = '0';
+  }
+
   const LEAD_FREQS = ['weekly', 'custom', 'monthly', 'interval'];
   $: leadDefault =
     form.frequency === 'monthly'
@@ -98,6 +106,7 @@
     } else {
       selectedDays = [...selectedDays, day];
     }
+    form.custom_days = selectedDays.join(','); // sync only for the custom path
   }
 
   async function handleSubmit() {
@@ -187,8 +196,12 @@
 
       {#if form.frequency === 'weekly'}
         <label class="field">
-          <span class="label">Weekday (0=Sun, 6=Sat)</span>
-          <input type="number" min="0" max="6" bind:value={form.custom_days} class="input input--sm" />
+          <span class="label">Weekday</span>
+          <select bind:value={form.custom_days} class="input">
+            {#each WEEKDAYS as name, i}
+              <option value={String(i)}>{name}</option>
+            {/each}
+          </select>
         </label>
       {/if}
 

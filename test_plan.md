@@ -866,6 +866,29 @@ Covers enhancements 21 and 23 — the generator rewrite. **Requires** the redepl
 
 ---
 
+## 23. Bug fixes — Weekly add, First-due window, iOS claim, Ghost assignments (v1.3.1)
+
+Covers issue-log #8–#11. Frontend (#8, #10) + Apps Script (#9, #11); no new sheet columns.
+
+### BUG-08 — Weekly chore weekday saves and generates
+**Steps:** Add a chore, frequency **Weekly**, pick a weekday from the dropdown (e.g. Tuesday), save.
+**Expected:** The weekday persists (it no longer resets while editing). `custom_days` holds the 0–6 value; the chore generates an assignment on/around that weekday and appears on Today (previously it saved blank and never reached Assignments). Editing an existing weekly chore preselects its current weekday.
+
+### BUG-09 — Future first-due chore appears in its lead window
+**Preconditions:** Create an interval/weekly/monthly chore with a **First due date** a few days out (e.g. July 5).
+**Expected:** It appears on Today within its lead window as **"Due Jul 5"** (not overdue), rather than only on the due date. A **daily** chore with a future first-due date still waits until that date (no lead). The Chores screen "Next:" tag matches.
+
+### BUG-10 — Claiming works on iOS Safari
+**Preconditions (iOS Safari):** An unassigned chore in **Available to Claim**.
+**Steps:** Tap the **"Tap to claim"** button (and separately the circle).
+**Expected:** The chore is claimed and moves to **My Chores** in both cases. (Regression check desktop/Android: claiming still works.)
+
+### BUG-11 — Deleted chore's assignments stop showing
+**Steps:** Delete a chore's row directly in the Chores sheet (leaving its Assignments rows behind). Refresh Today (and History).
+**Expected:** Assignments referencing the now-missing chore no longer appear (no blank "ghost" cards). Valid chores' assignments are unaffected. Note: the orphan rows remain in the sheet (intentionally not auto-deleted) — they're just hidden.
+
+---
+
 ## Summary Table
 
 | Area | Total Cases | Security Cases |
@@ -892,7 +915,8 @@ Covers enhancements 21 and 23 — the generator rewrite. **Requires** the redepl
 | Quick-Add from Today | 3 | — |
 | Quick-Add Assignee, Today Sort & Due Tag | 4 | — |
 | Lead-Time Appearance & Missed-Chore Penalty | 5 | — |
-| **Total** | **152** | **10** |
+| Bug fixes — Weekly add, First-due window, iOS claim, Ghost assignments | 4 | — |
+| **Total** | **156** | **10** |
 
 ---
 
@@ -1053,3 +1077,7 @@ Copy the table below into a spreadsheet. Fill in **Tester**, **Date**, **Result*
 | MISS-01 | v1.3.0 | Missed daily carries over + point penalty | | | | |
 | MISS-02 | v1.3.0 | Penalty once per recurrence, not per day | | | | |
 | MISS-03 | v1.3.0 | No penalty for completed / unassigned | | | | |
+| BUG-08 | v1.3.1 | Weekly chore weekday saves and generates | | | | |
+| BUG-09 | v1.3.1 | Future first-due chore appears in lead window | | | | |
+| BUG-10 | v1.3.1 | Claiming works on iOS Safari | | | | |
+| BUG-11 | v1.3.1 | Deleted chore's assignments stop showing | | | | |

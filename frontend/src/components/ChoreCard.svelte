@@ -72,6 +72,7 @@
 >
   {#if isInteractive}
     <button
+      type="button"
       class="check-btn"
       on:click={handleTap}
       aria-label={isUnassigned ? 'Claim chore' : 'Mark done'}
@@ -121,6 +122,8 @@
         </div>
         <span class="person-name-sm">{assignment.person_name ?? ''}</span>
       </div>
+    {:else if isInteractive}
+      <button type="button" class="claim-btn" on:click={handleTap}>Tap to claim</button>
     {:else}
       <span class="unassigned-label">Tap to claim</span>
     {/if}
@@ -290,6 +293,23 @@
     color: #2563eb;
     font-weight: 500;
   }
+
+  /* Real, comfortably-tappable claim affordance (the passive label wasn't
+     clickable, so on iOS tapping "Tap to claim" did nothing — #10). */
+  .claim-btn {
+    align-self: flex-start;
+    background: #eff6ff;
+    color: #2563eb;
+    font-size: 12px;
+    font-weight: 600;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    padding: 6px 10px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .claim-btn:active { opacity: 0.6; }
 
   .card-right {
     display: flex;

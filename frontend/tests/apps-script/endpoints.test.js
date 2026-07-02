@@ -31,6 +31,18 @@ describe('actionToday', () => {
     expect(ctx.actionToday({}).assignments[0].frequency).toBe('daily');
   });
 
+  it('skips "ghost" assignments whose chore no longer exists (#11)', () => {
+    const { ctx } = loadBackend({
+      Chores: [{ chore_id: 'c1', name: 'Dishes', frequency: 'daily' }],
+      Assignments: [
+        { assignment_id: 'a1', chore_id: 'c1', due_date: '2026-06-28', status: 'open' },
+        { assignment_id: 'ghost', chore_id: 'deleted', due_date: '2026-06-28', status: 'open' },
+      ],
+    });
+    const ids = ctx.actionToday({}).assignments.map((a) => a.assignment_id);
+    expect(ids).toEqual(['a1']); // ghost referencing a deleted chore is dropped
+  });
+
   it('includes lead_days (chore) and missed_count (assignment) in the payload', () => {
     const { ctx } = loadBackend({
       Chores: [{ chore_id: 'c1', name: 'Sweep', frequency: 'weekly', lead_days: 4 }],

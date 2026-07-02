@@ -94,6 +94,41 @@ describe('runNightlyGenerator — lead time (#23)', () => {
     ctx.runNightlyGenerator();
     expect(read('Assignments')[0].due_date).toBe('2026-07-15'); // appears 6 days early
   });
+
+  it('future start_date surfaces within the lead window, not before (#9)', () => {
+    // Interval 7 (lead min(7,7)=7 → 6 days early), first due 2026-07-15 → appears 07-09.
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 6, 8, 0, 5, 0)); // 07-08: not yet
+    const before = loadBackend({
+      Chores: [{ chore_id: 'c1', frequency: 'interval', interval_days: '7', start_date: '2026-07-15', active: 'TRUE' }],
+    });
+    before.ctx.runNightlyGenerator();
+    expect(before.read('Assignments')).toHaveLength(0);
+
+    vi.setSystemTime(new Date(2026, 6, 9, 0, 5, 0)); // 07-09: window opens
+    const inWindow = loadBackend({
+      Chores: [{ chore_id: 'c1', frequency: 'interval', interval_days: '7', start_date: '2026-07-15', active: 'TRUE' }],
+    });
+    inWindow.ctx.runNightlyGenerator();
+    const rows = inWindow.read('Assignments');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].due_date).toBe('2026-07-15'); // real due date, appears early
+  });
+
+  it('daily with a future start_date waits until that date (lead 1)', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 6, 4, 0, 5, 0)); // 07-04
+    const early = loadBackend({
+      Chores: [{ chore_id: 'c1', frequency: 'daily', start_date: '2026-07-05', active: 'TRUE' }],
+    });
+    early.ctx.runNightlyGenerator();
+    expect(early.read('Assignments')).toHaveLength(0);
+
+    vi.setSystemTime(new Date(2026, 6, 5, 0, 5, 0)); // 07-05
+    const onStart = loadBackend({
+      Chores: [{ chore_id: 'c1', frequency: 'daily', start_date: '2026-07-05', active: 'TRUE' }],
+    });
+    onStart.ctx.runNightlyGenerator();
+    expect(onStart.read('Assignments')[0].due_date).toBe('2026-07-05');
+  });
 });
 
 describe('runNightlyGenerator — missed-chore collapse + penalty (#21)', () => {

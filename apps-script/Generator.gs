@@ -40,9 +40,8 @@ function processChoreGeneration(chore, today, allAssignments, people) {
   var active = chore.active === true || chore.active === 'TRUE';
   if (!active) return null;
 
-  // Hard start guard: nothing appears before start_date (even in the lead window).
-  if (chore.start_date && formatDate(today) < chore.start_date) return null;
-
+  // `start_date` is the first occurrence's DUE date — nextDueForChore clamps to
+  // it — and the lead window below may surface the chore a few days earlier (#9).
   var nextDue = nextDueForChore(chore, today);
   if (!nextDue) return null;
 
