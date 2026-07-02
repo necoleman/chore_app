@@ -73,25 +73,34 @@ function isScheduledDueDay(chore, date) {
   return false;
 }
 
-// The "grace window" length in days (#23): how many days a chore is available to
-// be done, inclusive of the due date. A stored `lead_days` wins; otherwise a
-// per-frequency default. Weekly due Sunday with lead 4 → appears Thursday
-// (Thu/Fri/Sat/Sun); monthly lead 7 → appears the previous Monday.
-function effectiveLeadDays(chore) {
-  var raw = parseInt(chore.lead_days, 10);
-  if (raw && raw >= 1) return raw;
+// The recurrence period in days — used to keep the lead window shorter than the
+// interval so occurrences never overlap. (custom uses the 7-day weekly cycle;
+// monthly uses 28, the shortest month, to stay safe across months.)
+function recurrencePeriodDays(chore) {
   switch (chore.frequency) {
     case 'weekly':
     case 'custom':
-      return 4;
-    case 'monthly':
       return 7;
+    case 'monthly':
+      return 28;
     case 'interval':
-      var n = parseInt(chore.interval_days, 10) || 1;
-      return Math.max(1, Math.min(n, 7));
-    default: // daily, once
+      return parseInt(chore.interval_days, 10) || 1;
+    default: // daily, once — no meaningful interval
       return 1;
   }
+}
+
+// The lead window (#23): how many days the chore is visible before it goes
+// overdue, so it appears `lead − 1` days before its due date. Rules: at least 1,
+// strictly less than the recurrence interval, and **defaults to 1** (early
+// appearance is opt-in per chore via the `lead_days` column). Daily/once are
+// always 1 (they appear on the due date).
+function effectiveLeadDays(chore) {
+  var raw = parseInt(chore.lead_days, 10);
+  var lead = (raw && raw >= 1) ? raw : 1;         // > 0, default 1
+  var period = recurrencePeriodDays(chore);
+  var maxLead = period > 1 ? period - 1 : 1;      // < interval (daily/once → 1)
+  return Math.min(lead, maxLead);
 }
 
 // Days before the due date the assignment first appears (lead window − 1).

@@ -245,10 +245,10 @@ describe('generate-on-create (#17)', () => {
 
   it('actionAddChore surfaces a weekly chore early within its lead window (#23)', () => {
     const { ctx, read } = loadBackend();
-    // Weekly Wednesday (3) with default lead (4) → appears 3 days early. From
-    // Sunday 2026-06-28, next Wednesday 2026-07-01 is within the window → created
-    // now, but with the real (future) due date.
-    ctx.actionAddChore({ name: 'Laundry', frequency: 'weekly', custom_days: '3' });
+    // Weekly Wednesday (3) with lead_days 4 → appears 3 days early. From Sunday
+    // 2026-06-28, next Wednesday 2026-07-01 is within the window → created now,
+    // but with the real (future) due date.
+    ctx.actionAddChore({ name: 'Laundry', frequency: 'weekly', custom_days: '3', lead_days: 4 });
     const rows = read('Assignments');
     expect(rows.length).toBe(1);
     expect(rows[0].due_date).toBe('2026-07-01');

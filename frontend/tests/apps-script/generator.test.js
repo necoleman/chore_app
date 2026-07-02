@@ -67,8 +67,8 @@ describe('runNightlyGenerator — lead time (#23)', () => {
   it('surfaces a weekly chore early with its real (future) due date', () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 6, 2, 0, 5, 0)); // Thu 2026-07-02
     const { ctx, read } = loadBackend({
-      // Weekly Sunday (0), default lead 4 → appears 3 days early (Thursday).
-      Chores: [{ chore_id: 'c1', frequency: 'weekly', custom_days: '0', active: 'TRUE' }],
+      // Weekly Sunday (0), lead 4 → appears 3 days early (Thursday).
+      Chores: [{ chore_id: 'c1', frequency: 'weekly', custom_days: '0', lead_days: 4, active: 'TRUE' }],
     });
     ctx.runNightlyGenerator();
     const rows = read('Assignments');
@@ -80,33 +80,42 @@ describe('runNightlyGenerator — lead time (#23)', () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 6, 1, 0, 5, 0)); // Wed 2026-07-01
     const { ctx, read } = loadBackend({
       // Sunday due, lead 4 → appears 2026-07-02; on 07-01 it's not time yet.
-      Chores: [{ chore_id: 'c1', frequency: 'weekly', custom_days: '0', active: 'TRUE' }],
+      Chores: [{ chore_id: 'c1', frequency: 'weekly', custom_days: '0', lead_days: 4, active: 'TRUE' }],
     });
     ctx.runNightlyGenerator();
     expect(read('Assignments')).toHaveLength(0);
   });
 
+  it('default lead is 1 — a weekly chore appears on its due date', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 6, 2, 0, 5, 0)); // Thu 2026-07-02
+    const { ctx, read } = loadBackend({
+      Chores: [{ chore_id: 'c1', frequency: 'weekly', custom_days: '0', active: 'TRUE' }], // no lead_days
+    });
+    ctx.runNightlyGenerator();
+    expect(read('Assignments')).toHaveLength(0); // Sunday due, appears only on Sunday
+  });
+
   it('monthly lead 7 appears the prior week', () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 6, 9, 0, 5, 0)); // 2026-07-09
     const { ctx, read } = loadBackend({
-      Chores: [{ chore_id: 'c1', frequency: 'monthly', monthly_day: '15', active: 'TRUE' }],
+      Chores: [{ chore_id: 'c1', frequency: 'monthly', monthly_day: '15', lead_days: 7, active: 'TRUE' }],
     });
     ctx.runNightlyGenerator();
     expect(read('Assignments')[0].due_date).toBe('2026-07-15'); // appears 6 days early
   });
 
   it('future start_date surfaces within the lead window, not before (#9)', () => {
-    // Interval 7 (lead min(7,7)=7 → 6 days early), first due 2026-07-15 → appears 07-09.
-    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 6, 8, 0, 5, 0)); // 07-08: not yet
+    // Interval 7 with lead 6 → 5 days early; first due 2026-07-15 → appears 07-10.
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 6, 9, 0, 5, 0)); // 07-09: not yet
     const before = loadBackend({
-      Chores: [{ chore_id: 'c1', frequency: 'interval', interval_days: '7', start_date: '2026-07-15', active: 'TRUE' }],
+      Chores: [{ chore_id: 'c1', frequency: 'interval', interval_days: '7', lead_days: 6, start_date: '2026-07-15', active: 'TRUE' }],
     });
     before.ctx.runNightlyGenerator();
     expect(before.read('Assignments')).toHaveLength(0);
 
-    vi.setSystemTime(new Date(2026, 6, 9, 0, 5, 0)); // 07-09: window opens
+    vi.setSystemTime(new Date(2026, 6, 10, 0, 5, 0)); // 07-10: window opens
     const inWindow = loadBackend({
-      Chores: [{ chore_id: 'c1', frequency: 'interval', interval_days: '7', start_date: '2026-07-15', active: 'TRUE' }],
+      Chores: [{ chore_id: 'c1', frequency: 'interval', interval_days: '7', lead_days: 6, start_date: '2026-07-15', active: 'TRUE' }],
     });
     inWindow.ctx.runNightlyGenerator();
     const rows = inWindow.read('Assignments');
@@ -188,7 +197,7 @@ describe('runNightlyGenerator — missed-chore collapse + penalty (#21)', () => 
     vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 6, 1, 0, 5, 0)); // Wed 07-01, before loadBackend
     const { ctx, read } = loadBackend({
       People: [{ person_id: 'kid', points_total: 10 }],
-      Chores: [{ chore_id: 'c1', frequency: 'weekly', custom_days: '0', active: 'TRUE', default_assignee: 'kid', points: 2, last_generated_date: '2026-06-28' }],
+      Chores: [{ chore_id: 'c1', frequency: 'weekly', custom_days: '0', lead_days: 4, active: 'TRUE', default_assignee: 'kid', points: 2, last_generated_date: '2026-06-28' }],
       Assignments: [{ assignment_id: 'a1', chore_id: 'c1', person_id: 'kid', due_date: '2026-06-28', status: 'open' }],
     });
 
@@ -208,5 +217,30 @@ describe('runNightlyGenerator — missed-chore collapse + penalty (#21)', () => 
     ctx.runNightlyGenerator();
     expect(read('People')[0].points_total).toBe(8);
     expect(read('Assignments')).toHaveLength(1); // never duplicated
+  });
+
+  it('short interval (default lead 1) hides after completion and penalizes after a full interval', () => {
+    // "every 3 days" — no lead_days → lead 1 → appears on the due date. Done 07-06.
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 6, 7, 0, 5, 0)); // 07-07, before loadBackend
+    const { ctx, read } = loadBackend({
+      People: [{ person_id: 'kid', points_total: 10 }],
+      Chores: [{ chore_id: 'c1', frequency: 'interval', interval_days: '3', active: 'TRUE', default_assignee: 'kid', points: 2, last_generated_date: '2026-07-06' }],
+      Assignments: [{ assignment_id: 'a1', chore_id: 'c1', person_id: 'kid', due_date: '2026-07-06', status: 'done' }],
+    });
+
+    // 07-07 & 07-08: next due 07-09 appears only on 07-09 → nothing yet (no reappear-next-day).
+    ctx.runNightlyGenerator();
+    expect(read('Assignments')).toHaveLength(1);
+    vi.setSystemTime(new Date(2026, 6, 8, 0, 5, 0));
+    ctx.runNightlyGenerator();
+    expect(read('Assignments')).toHaveLength(1);
+
+    // 07-09: the next occurrence is due → a fresh assignment appears.
+    vi.setSystemTime(new Date(2026, 6, 9, 0, 5, 0));
+    ctx.runNightlyGenerator();
+    const rows = read('Assignments');
+    expect(rows).toHaveLength(2);
+    expect(rows.some((r) => r.due_date === '2026-07-09' && r.status === 'open')).toBe(true);
+    expect(read('People')[0].points_total).toBe(10); // no penalty (previous was done)
   });
 });

@@ -13,20 +13,28 @@ describe('date helpers', () => {
 
 describe('effectiveLeadDays (#23)', () => {
   const { ctx } = loadBackend();
-  it('per-frequency defaults, interval clamp, and explicit override', () => {
-    expect(ctx.effectiveLeadDays({ frequency: 'daily' })).toBe(1);
-    expect(ctx.effectiveLeadDays({ frequency: 'once' })).toBe(1);
-    expect(ctx.effectiveLeadDays({ frequency: 'weekly' })).toBe(4);
-    expect(ctx.effectiveLeadDays({ frequency: 'custom' })).toBe(4);
-    expect(ctx.effectiveLeadDays({ frequency: 'monthly' })).toBe(7);
-    expect(ctx.effectiveLeadDays({ frequency: 'interval', interval_days: '3' })).toBe(3);
-    expect(ctx.effectiveLeadDays({ frequency: 'interval', interval_days: '30' })).toBe(7); // clamp
-    expect(ctx.effectiveLeadDays({ frequency: 'weekly', lead_days: 2 })).toBe(2); // override
-    expect(ctx.effectiveLeadDays({ frequency: 'monthly', lead_days: '' })).toBe(7); // blank → default
+  it('defaults to 1 for every frequency when unset', () => {
+    ['daily', 'once', 'weekly', 'custom', 'monthly'].forEach((frequency) => {
+      expect(ctx.effectiveLeadDays({ frequency })).toBe(1);
+    });
+    expect(ctx.effectiveLeadDays({ frequency: 'interval', interval_days: '3' })).toBe(1);
+  });
+  it('honours an explicit value within range', () => {
+    expect(ctx.effectiveLeadDays({ frequency: 'weekly', lead_days: 4 })).toBe(4);
+    expect(ctx.effectiveLeadDays({ frequency: 'monthly', lead_days: 7 })).toBe(7);
+    expect(ctx.effectiveLeadDays({ frequency: 'interval', interval_days: '10', lead_days: 6 })).toBe(6);
+  });
+  it('clamps to ≥1 and < the recurrence interval', () => {
+    expect(ctx.effectiveLeadDays({ frequency: 'weekly', lead_days: 9 })).toBe(6);   // < 7
+    expect(ctx.effectiveLeadDays({ frequency: 'monthly', lead_days: 40 })).toBe(27); // < 28
+    expect(ctx.effectiveLeadDays({ frequency: 'interval', interval_days: '3', lead_days: 5 })).toBe(2); // < 3
+    expect(ctx.effectiveLeadDays({ frequency: 'interval', interval_days: '3', lead_days: 3 })).toBe(2); // strictly <
+    expect(ctx.effectiveLeadDays({ frequency: 'daily', lead_days: 5 })).toBe(1);     // daily always 1
+    expect(ctx.effectiveLeadDays({ frequency: 'weekly', lead_days: 0 })).toBe(1);    // > 0
   });
   it('appearOffsetDays is lead − 1', () => {
-    expect(ctx.appearOffsetDays({ frequency: 'weekly' })).toBe(3);
-    expect(ctx.appearOffsetDays({ frequency: 'daily' })).toBe(0);
+    expect(ctx.appearOffsetDays({ frequency: 'weekly' })).toBe(0);              // default lead 1
+    expect(ctx.appearOffsetDays({ frequency: 'weekly', lead_days: 4 })).toBe(3);
   });
 });
 

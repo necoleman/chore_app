@@ -842,13 +842,18 @@ Covers enhancements 20 and 22, plus the per-card "Due …" tag (display groundwo
 Covers enhancements 21 and 23 — the generator rewrite. **Requires** the redeployed Apps Script **and** the new sheet columns: `lead_days` on **Chores** and `missed_count` on **Assignments**. Run `runNightlyGenerator` manually from the Apps Script editor to drive these without waiting for 12:01am.
 
 ### LEAD-01 — Non-daily chore appears early with its real due date
-**Preconditions:** A weekly chore due Sunday, `lead_days` blank (default 4).
+**Preconditions:** A weekly chore due Sunday with **`lead_days` = 4**. (Default is now 1 — early appearance is opt-in; a chore left at the default appears on its due date.)
 **Steps:** On the previous **Thursday**, run the generator; check Today.
-**Expected:** An assignment appears with **due_date = the upcoming Sunday** (not Thursday). Its card shows **Due Sunday** and is *not* flagged overdue. Running the generator on the previous Wednesday produces nothing (window not open yet). A monthly chore (`lead_days` 7) appears the previous Monday.
+**Expected:** An assignment appears with **due_date = the upcoming Sunday** (not Thursday). Its card shows **Due Sunday** and is *not* flagged overdue. Running the generator on the previous Wednesday produces nothing (window not open yet). A monthly chore with `lead_days` 7 appears the previous Monday. With `lead_days` blank/1, the weekly chore appears only on Sunday.
 
-### LEAD-02 — Editor lead field round-trips
-**Steps:** Edit a weekly chore, set **Days to complete (appears early)** to 2, save, reopen.
-**Expected:** The value persists (`lead_days` = 2 on the Chores row) and the chore now appears only 1 day early. Blank shows the frequency default as placeholder.
+### LEAD-02 — Editor lead field validates and round-trips
+**Steps:** Edit a weekly chore, set **Days visible before overdue** to 4, save, reopen. Then try an out-of-range value (e.g. 9 on a weekly chore, or ≥ N on an "every N days" chore).
+**Expected:** 4 persists (`lead_days` = 4) and the chore appears 3 days early. Out-of-range input is clamped to `1…interval−1` (weekly max 6; interval max N−1); blank means the default (1, appears on the due date).
+
+### LEAD-03 — Short interval hides after completion (no reappear-next-day)
+**Preconditions:** An "every 3 days" chore at default lead (1), completed today.
+**Steps:** Run the generator over the next few days.
+**Expected:** It stays off Today until it's due again (3 days later), then a fresh assignment appears — it does **not** pop back the next day. If left undone, the miss-penalty applies when the next occurrence comes due (a full interval later), not ~1 day after.
 
 ### MISS-01 — Missed daily chore carries over (no duplicate) + point penalty
 **Preconditions:** A daily chore assigned to a child, worth N points, with yesterday's assignment still **open**.
@@ -914,9 +919,9 @@ Covers issue-log #8–#11. Frontend (#8, #10) + Apps Script (#9, #11); no new sh
 | Last-Done, Monthly nth-Weekday, Due-Today & Frequency Colors | 5 | — |
 | Quick-Add from Today | 3 | — |
 | Quick-Add Assignee, Today Sort & Due Tag | 4 | — |
-| Lead-Time Appearance & Missed-Chore Penalty | 5 | — |
+| Lead-Time Appearance & Missed-Chore Penalty | 6 | — |
 | Bug fixes — Weekly add, First-due window, iOS claim, Ghost assignments | 4 | — |
-| **Total** | **156** | **10** |
+| **Total** | **157** | **10** |
 
 ---
 
@@ -1073,7 +1078,8 @@ Copy the table below into a spreadsheet. Fill in **Tester**, **Date**, **Result*
 | TSORT-01 | v1.2.0 | Sort the Today screen (within sections) | | | | |
 | DUETAG-01 | v1.2.0 | "Due …" tag on every card | | | | |
 | LEAD-01 | v1.3.0 | Non-daily chore appears early with real due date | | | | |
-| LEAD-02 | v1.3.0 | Editor lead field round-trips | | | | |
+| LEAD-02 | v1.3.2 | Editor lead field validates (1…interval−1) and round-trips | | | | |
+| LEAD-03 | v1.3.2 | Short interval hides after completion (no reappear-next-day) | | | | |
 | MISS-01 | v1.3.0 | Missed daily carries over + point penalty | | | | |
 | MISS-02 | v1.3.0 | Penalty once per recurrence, not per day | | | | |
 | MISS-03 | v1.3.0 | No penalty for completed / unassigned | | | | |

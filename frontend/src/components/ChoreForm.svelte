@@ -48,8 +48,6 @@
   // the weekly weekday field (which also binds custom_days), wiping it (#8).
   let selectedDays = (form.custom_days || '').split(',').map((d) => d.trim()).filter(Boolean);
 
-  // Lead window (#23) applies to non-daily / non-once cadences. The placeholder
-  // shows the per-frequency default used when left blank.
   // Ensure a weekly chore always has a valid 0–6 weekday so the <select> and the
   // stored value agree (a blank/leftover value would show Sunday but save empty).
   // Guarded so it only fills a missing value — never overwrites a real choice.
@@ -57,13 +55,15 @@
     form.custom_days = '0';
   }
 
+  // Lead window (#23) applies to non-daily / non-once cadences. It defaults to 1
+  // (appears on the due date) and must be ≥1 and < the recurrence interval.
   const LEAD_FREQS = ['weekly', 'custom', 'monthly', 'interval'];
-  $: leadDefault =
+  $: leadMax =
     form.frequency === 'monthly'
-      ? 7
+      ? 27
       : form.frequency === 'interval'
-        ? Math.max(1, Math.min(parseInt(form.interval_days, 10) || 1, 7))
-        : 4;
+        ? Math.max(1, (parseInt(form.interval_days, 10) || 2) - 1)
+        : 6; // weekly / custom (7-day cycle)
 
   const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const WEEK_ORDINALS = [
@@ -113,6 +113,10 @@
     if (!form.name.trim()) {
       showToast('Name is required');
       return;
+    }
+    // Keep lead_days within 1..<interval (blank stays blank → defaults to 1).
+    if (LEAD_FREQS.includes(form.frequency) && form.lead_days !== '' && form.lead_days != null) {
+      form.lead_days = Math.min(Math.max(1, parseInt(form.lead_days, 10) || 1), leadMax);
     }
     saving = true;
     try {
@@ -275,14 +279,14 @@
 
       {#if LEAD_FREQS.includes(form.frequency)}
         <label class="field">
-          <span class="label">Days to complete (appears early)</span>
+          <span class="label">Days visible before overdue (1–{leadMax})</span>
           <input
             type="number"
             min="1"
-            max="31"
+            max={leadMax}
             bind:value={form.lead_days}
             class="input input--sm"
-            placeholder={`default ${leadDefault}`}
+            placeholder="default 1"
           />
         </label>
       {/if}
