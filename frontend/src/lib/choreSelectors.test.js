@@ -33,7 +33,7 @@ describe('filterTodayAssignments', () => {
     expect(ids).not.toContain('future-open');
   });
 
-  it('includes done/skipped only when due today', () => {
+  it('includes done/skipped due today; drops stale ones', () => {
     const list = [
       a({ assignment_id: 'done-today', due_date: TODAY, status: 'done' }),
       a({ assignment_id: 'done-old', due_date: '2026-06-25', status: 'done' }),
@@ -41,6 +41,19 @@ describe('filterTodayAssignments', () => {
     ];
     const ids = filterTodayAssignments(list, TODAY).map((x) => x.assignment_id);
     expect(ids).toEqual(['done-today']);
+  });
+
+  it('keeps an overdue chore completed today, drops one completed earlier (#14)', () => {
+    const list = [
+      // Overdue (due 06-25) but checked off today → stays for the rest of today.
+      a({ assignment_id: 'od-done-today', due_date: '2026-06-25', status: 'done', completed_at: TODAY + 'T09:00:00Z' }),
+      // Overdue and completed yesterday → gone.
+      a({ assignment_id: 'od-done-yesterday', due_date: '2026-06-25', status: 'done', completed_at: '2026-06-27T09:00:00Z' }),
+      // Skipped overdue never carries a timestamp → gone (skip rule unchanged).
+      a({ assignment_id: 'od-skip', due_date: '2026-06-25', status: 'skipped', completed_at: TODAY }),
+    ];
+    const ids = filterTodayAssignments(list, TODAY).map((x) => x.assignment_id);
+    expect(ids).toEqual(['od-done-today']);
   });
 
   it('drops rows without a due date and tolerates empty input', () => {

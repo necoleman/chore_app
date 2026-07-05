@@ -86,8 +86,12 @@ export function nextDueDate(chore, todayStr = today()) {
     const n = parseInt(chore.interval_days, 10);
     if (!n) return null;
     if (!chore.last_generated_date) return effStart; // first occurrence
-    const next = addDays(parseLocalDate(chore.last_generated_date), n);
-    return next > todayDate ? next : todayDate; // overdue → due now
+    // last_generated_date is the current occurrence's due date. Advance by whole
+    // intervals to the first occurrence on/after today, so a chore due today
+    // reads "Today" (not last+N) and a past one rolls to its next date (#13).
+    let d = parseLocalDate(chore.last_generated_date);
+    while (d < todayDate) d = addDays(d, n);
+    return d;
   }
 
   if (freq === 'daily') return effStart;

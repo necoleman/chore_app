@@ -23,6 +23,18 @@ describe('actionToday', () => {
     expect(t.chore_name).toBe('Dishes');
   });
 
+  it('keeps an overdue chore completed today, drops one completed earlier (#14)', () => {
+    const { ctx } = loadBackend({
+      Chores: [{ chore_id: 'c1', name: 'Dishes' }],
+      Assignments: [
+        { assignment_id: 'od-done-today', chore_id: 'c1', due_date: '2026-06-20', status: 'done', completed_at: '2026-06-28T09:00:00Z' },
+        { assignment_id: 'od-done-earlier', chore_id: 'c1', due_date: '2026-06-20', status: 'done', completed_at: '2026-06-27T09:00:00Z' },
+      ],
+    });
+    const ids = ctx.actionToday({}).assignments.map((a) => a.assignment_id);
+    expect(ids).toEqual(['od-done-today']);
+  });
+
   it('includes the chore frequency for color-coding (#18)', () => {
     const { ctx } = loadBackend({
       Chores: [{ chore_id: 'c1', name: 'Dishes', frequency: 'daily' }],
@@ -202,6 +214,35 @@ describe('add/update chore start_date', () => {
     const { ctx, read } = loadBackend({ Chores: [{ chore_id: 'c1', name: 'X', start_date: '' }] });
     ctx.actionUpdateChore({ chore_id: 'c1', start_date: '2026-08-01' });
     expect(read('Chores')[0].start_date).toBe('2026-08-01');
+  });
+
+  it('re-anchors an interval chore\'s open assignment when start_date changes (#12)', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 5, 28, 12, 0, 0));
+    const { ctx, read } = loadBackend({
+      Chores: [{ chore_id: 'c1', name: 'Filter', frequency: 'interval', interval_days: '90',
+                 start_date: '2026-06-28', last_generated_date: '2026-06-28', active: true }],
+      Assignments: [{ assignment_id: 'a1', chore_id: 'c1', person_id: 'me',
+                      due_date: '2026-06-28', status: 'open', assigned_by: 'auto' }],
+    });
+    ctx.actionUpdateChore({ chore_id: 'c1', frequency: 'interval', start_date: '2026-07-10' });
+    const assignments = read('Assignments');
+    expect(assignments.length).toBe(1); // moved, not duplicated
+    expect(assignments[0].due_date).toBe('2026-07-10');
+    expect(read('Chores')[0].last_generated_date).toBe('2026-07-10');
+    vi.useRealTimers();
+  });
+
+  it('does NOT re-anchor once the interval chore has activity (#12 guard)', () => {
+    const { ctx, read } = loadBackend({
+      Chores: [{ chore_id: 'c1', frequency: 'interval', interval_days: '30',
+                 start_date: '2026-06-28', last_generated_date: '2026-07-28', active: 'FALSE' }],
+      Assignments: [
+        { assignment_id: 'a1', chore_id: 'c1', due_date: '2026-06-28', status: 'done', assigned_by: 'auto' },
+        { assignment_id: 'a2', chore_id: 'c1', due_date: '2026-07-28', status: 'open', assigned_by: 'auto' },
+      ],
+    });
+    ctx.actionUpdateChore({ chore_id: 'c1', frequency: 'interval', start_date: '2026-08-01' });
+    expect(read('Assignments').map((a) => a.due_date)).toEqual(['2026-06-28', '2026-07-28']);
   });
 
   it('actionAddChore persists monthly nth-weekday fields (#16)', () => {

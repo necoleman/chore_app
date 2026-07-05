@@ -22,7 +22,11 @@ function actionToday(params) {
     // one-time chores auto-archive but their assignment must still show.)
     if (!choreMap[a.chore_id]) return false;
     if (a.status === 'skipped' || a.status === 'done') {
-      return a.due_date === today;
+      if (a.due_date === today) return true;
+      // A chore COMPLETED today stays on Today (greyed, at the bottom) for the
+      // rest of the day even if it was overdue when checked off (#14).
+      return a.status === 'done' && a.completed_at &&
+             String(a.completed_at).slice(0, 10) === today;
     }
     return true;
   });
@@ -435,6 +439,10 @@ function actionUpdateChore(body) {
   var choreId = body.chore_id;
   if (!choreId) throw new Error('chore_id required');
 
+  var existing = getRows('Chores').find(function(c) { return c.chore_id === choreId; });
+  var oldStart = existing ? existing.start_date : '';
+  var oldFreq = existing ? existing.frequency : '';
+
   var updates = {};
   var allowed = ['name', 'location', 'description', 'points', 'frequency', 'custom_days',
                  'monthly_day', 'monthly_week', 'monthly_weekday', 'interval_days', 'once_date',
@@ -446,11 +454,36 @@ function actionUpdateChore(body) {
   updateRow('Chores', 'chore_id', choreId, updates);
   invalidateCache('Chores');
 
+  // If an interval chore's first-due date (start_date) changed and it hasn't
+  // been acted on yet, re-anchor the outstanding assignment to the new date so
+  // the Today due date tracks the edit instead of stranding the old one (#12).
+  var newFreq = body.hasOwnProperty('frequency') ? body.frequency : oldFreq;
+  if (newFreq === 'interval' && body.hasOwnProperty('start_date') &&
+      body.start_date && body.start_date !== oldStart) {
+    reanchorIntervalAssignment(choreId, body.start_date);
+  }
+
   // Editing frequency/day/start_date may make the chore due today; surface it
   // immediately. The same-day dedupe in the generator keeps this idempotent (#17).
   generateTodayForChore(choreId);
 
   return { success: true };
+}
+
+// Move an interval chore's single still-open, auto-generated assignment to a new
+// due date (its new start_date) and re-anchor last_generated_date to match, so
+// changing the "first due date" updates Today (#12). No-op if the chore has any
+// completion history (more than one assignment, or a manual/non-open one) — we
+// never reschedule work someone may already have started.
+function reanchorIntervalAssignment(choreId, newDue) {
+  var mine = getRows('Assignments').filter(function(a) { return a.chore_id === choreId; });
+  if (mine.length !== 1) return;
+  var a = mine[0];
+  if (a.status !== 'open' || a.assigned_by !== 'auto') return;
+  updateRow('Assignments', 'assignment_id', a.assignment_id, { due_date: newDue });
+  updateRow('Chores', 'chore_id', choreId, { last_generated_date: newDue });
+  invalidateCache('Assignments');
+  invalidateCache('Chores');
 }
 
 // ─── POST: register_token ─────────────────────────────────────────────────────

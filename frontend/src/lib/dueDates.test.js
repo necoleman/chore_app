@@ -34,9 +34,13 @@ describe('nextDueDate', () => {
     expect(nd({ frequency: 'monthly', monthly_week: 4, monthly_weekday: 1 })).toBe('2026-07-27');
   });
 
-  it('interval → from last_generated_date; overdue collapses to today', () => {
+  it('interval → current occurrence when due today, else next grid date (#13)', () => {
+    // last_generated_date is the current occurrence's due date. A chore due today
+    // (generated on creation) reads "today" — not last+N (the #13 off-by-interval).
+    expect(nd({ frequency: 'interval', interval_days: '90', last_generated_date: TODAY })).toBe('2026-06-28');
+    // A completed/past occurrence rolls forward by whole intervals to the next.
     expect(nd({ frequency: 'interval', interval_days: '7', last_generated_date: '2026-06-25' })).toBe('2026-07-02');
-    expect(nd({ frequency: 'interval', interval_days: '7', last_generated_date: '2026-06-01' })).toBe('2026-06-28'); // overdue → today
+    expect(nd({ frequency: 'interval', interval_days: '7', last_generated_date: '2026-06-01' })).toBe('2026-06-29'); // 06-01→…→06-29
     expect(nd({ frequency: 'interval', interval_days: '7' })).toBe('2026-06-28'); // never run → now
   });
 

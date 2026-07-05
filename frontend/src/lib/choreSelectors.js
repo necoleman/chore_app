@@ -7,16 +7,21 @@
 import { appearDate } from './dueDates.js';
 
 // Assignments to show on the Today screen for a given local date string (yyyy-MM-dd):
-// finished items (done/skipped) only when due today; unfinished items
-// (open/pending_review/rejected) show once they've entered their lead window
-// (#23) — i.e. their appear date (due − leadgrace) has arrived — which includes
-// overdue items but hides not-yet-appeared future ones. Legacy rows without
-// lead_days fall back to lead 1, i.e. appear on their due date (prior behavior).
+// finished items show when due today, plus a chore *completed* today stays on
+// the list (greyed, at the bottom) for the rest of the day even if it was
+// overdue when checked off (#14). Unfinished items (open/pending_review/rejected)
+// show once they've entered their lead window (#23) — i.e. their appear date
+// (due − leadgrace) has arrived — which includes overdue items but hides
+// not-yet-appeared future ones. Legacy rows without lead_days fall back to lead
+// 1, i.e. appear on their due date (prior behavior).
 export function filterTodayAssignments(assignments, todayStr) {
   return (assignments ?? []).filter((a) => {
     const d = a.due_date?.slice(0, 10);
     if (!d) return false;
-    if (a.status === 'done' || a.status === 'skipped') return d === todayStr;
+    if (a.status === 'done' || a.status === 'skipped') {
+      if (d === todayStr) return true;
+      return a.status === 'done' && a.completed_at?.slice(0, 10) === todayStr;
+    }
     return appearDate(d, a.lead_days) <= todayStr;
   });
 }

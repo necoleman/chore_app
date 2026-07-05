@@ -894,6 +894,26 @@ Covers issue-log #8–#11. Frontend (#8, #10) + Apps Script (#9, #11); no new sh
 
 ---
 
+## 24. Bug fixes — Interval due date sync, Interval next-due, Done-today carryover (v1.3.3)
+
+Covers issue-log #12–#14. Apps Script (#12, #14) + frontend (#13, #14); no new sheet columns.
+
+### BUG-12 — Changing an interval chore's first-due date moves the assignment
+**Preconditions:** Create an "every N days" chore due today (or soon); confirm its assignment/Today card. Don't complete it.
+**Steps:** In Manage Chores, edit the chore's **First due date** to a different date and save.
+**Expected:** The existing Today assignment's due date updates to match (Today card and the Assignments sheet both reflect the new date) — no duplicate row, no stranded old-dated card. If the new date is in the future, the card leaves Today until then. A chore that's already been completed at least once (has history) is **not** retroactively rescheduled.
+
+### BUG-13 — Interval chore's "Next:" reads correctly
+**Preconditions:** Create "every N days" chores with first-due **today** and **tomorrow**.
+**Expected:** The Chores screen "Next:" tag shows **Today** / **Tomorrow** (matching the Today tab), not the date one full interval later. After the chore is completed, "Next:" advances to the next real occurrence (last done + N).
+
+### BUG-14 — Chore completed today stays on Today all day
+**Preconditions:** An **overdue** chore (due date in the past) still open on Today.
+**Steps:** Check it off (complete it).
+**Expected:** It stays on Today — greyed out, moved to the bottom — for the rest of the day, instead of disappearing. It drops off after the day rolls over. A chore that was completed on a previous day does not reappear.
+
+---
+
 ## Summary Table
 
 | Area | Total Cases | Security Cases |
@@ -921,7 +941,8 @@ Covers issue-log #8–#11. Frontend (#8, #10) + Apps Script (#9, #11); no new sh
 | Quick-Add Assignee, Today Sort & Due Tag | 4 | — |
 | Lead-Time Appearance & Missed-Chore Penalty | 6 | — |
 | Bug fixes — Weekly add, First-due window, iOS claim, Ghost assignments | 4 | — |
-| **Total** | **157** | **10** |
+| Bug fixes — Interval due-date sync, Interval next-due, Done-today carryover | 3 | — |
+| **Total** | **160** | **10** |
 
 ---
 
@@ -1087,3 +1108,6 @@ Copy the table below into a spreadsheet. Fill in **Tester**, **Date**, **Result*
 | BUG-09 | v1.3.1 | Future first-due chore appears in lead window | | | | |
 | BUG-10 | v1.3.1 | Claiming works on iOS Safari | | | | |
 | BUG-11 | v1.3.1 | Deleted chore's assignments stop showing | | | | |
+| BUG-12 | v1.3.3 | Changing interval first-due date moves the assignment | | | | |
+| BUG-13 | v1.3.3 | Interval chore's "Next:" reads correctly | | | | |
+| BUG-14 | v1.3.3 | Chore completed today stays on Today all day | | | | |
