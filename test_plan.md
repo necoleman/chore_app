@@ -914,6 +914,27 @@ Covers issue-log #12–#14. Apps Script (#12, #14) + frontend (#13, #14); no new
 
 ---
 
+## 25. Chore rotation between people (v1.4.0)
+
+Covers enhancement #24. Apps Script generator + Manage Chores display; new internal `rotation_last` Chores column. Set the rotation list directly in the sheet (`default_assignee` = comma-delimited `person_id`s).
+
+### ROTATE-01 — Successive occurrences cycle through the list
+**Preconditions:** A recurring chore with `default_assignee` = `p_a,p_b,p_c` and blank `rotation_last`.
+**Steps:** Let the generator run across several occurrences (or run `runNightlyGenerator` on successive days).
+**Expected:** Occurrence 1 → p_a, 2 → p_b, 3 → p_c, 4 → p_a (wraps). `rotation_last` tracks the last-planned person. A single-person `default_assignee` always assigns that person; a blank one stays unclaimed.
+
+### ROTATE-02 — Manual reassignment doesn't shift the order
+**Preconditions:** A rotating chore mid-cycle (`rotation_last` = `p_a`).
+**Steps:** Before the next occurrence generates, reassign the current/last assignment to someone else (including someone not in the list). Then generate the next occurrence.
+**Expected:** The next occurrence still goes to **p_b** (the person after the last *planned* assignee), unaffected by the manual reassignment. Order is preserved.
+
+### ROTATE-03 — Dropped-from-list falls back to first
+**Preconditions:** A rotating chore whose `rotation_last` holds a `person_id` no longer present in `default_assignee`.
+**Steps:** Generate the next occurrence.
+**Expected:** It assigns the **first** person in the current list. Manage Chores renders the rotation as "A → B → C".
+
+---
+
 ## Summary Table
 
 | Area | Total Cases | Security Cases |
@@ -942,7 +963,8 @@ Covers issue-log #12–#14. Apps Script (#12, #14) + frontend (#13, #14); no new
 | Lead-Time Appearance & Missed-Chore Penalty | 6 | — |
 | Bug fixes — Weekly add, First-due window, iOS claim, Ghost assignments | 4 | — |
 | Bug fixes — Interval due-date sync, Interval next-due, Done-today carryover | 3 | — |
-| **Total** | **160** | **10** |
+| Chore rotation between people | 3 | — |
+| **Total** | **163** | **10** |
 
 ---
 
@@ -1111,3 +1133,6 @@ Copy the table below into a spreadsheet. Fill in **Tester**, **Date**, **Result*
 | BUG-12 | v1.3.3 | Changing interval first-due date moves the assignment | | | | |
 | BUG-13 | v1.3.3 | Interval chore's "Next:" reads correctly | | | | |
 | BUG-14 | v1.3.3 | Chore completed today stays on Today all day | | | | |
+| ROTATE-01 | v1.4.0 | Successive occurrences cycle through the assignee list | | | | |
+| ROTATE-02 | v1.4.0 | Manual reassignment doesn't shift the rotation order | | | | |
+| ROTATE-03 | v1.4.0 | Dropped-from-list assignee falls back to first | | | | |

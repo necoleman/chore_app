@@ -19,7 +19,7 @@ const FILES = ['SheetUtils.gs', 'DateUtils.gs', 'Streaks.gs', 'Endpoints.gs', 'G
 // Canonical column order per sheet (matches the README schema).
 export const HEADERS = {
   People: ['person_id', 'name', 'color', 'fcm_token', 'points_total', 'streak_current', 'streak_best', 'is_admin'],
-  Chores: ['chore_id', 'name', 'location', 'description', 'points', 'frequency', 'custom_days', 'monthly_day', 'monthly_week', 'monthly_weekday', 'interval_days', 'once_date', 'start_date', 'lead_days', 'last_generated_date', 'default_assignee', 'requires_approval', 'active'],
+  Chores: ['chore_id', 'name', 'location', 'description', 'points', 'frequency', 'custom_days', 'monthly_day', 'monthly_week', 'monthly_weekday', 'interval_days', 'once_date', 'start_date', 'lead_days', 'last_generated_date', 'default_assignee', 'rotation_last', 'requires_approval', 'active'],
   Assignments: ['assignment_id', 'chore_id', 'person_id', 'due_date', 'status', 'completed_at', 'assigned_by', 'points_awarded', 'missed_count', 'reviewed_by', 'reviewed_at', 'review_note', 'last_modified_by', 'last_modified_at'],
   Locations: ['location'],
 };

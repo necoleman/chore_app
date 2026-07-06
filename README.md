@@ -28,7 +28,7 @@ person_id | name | color | fcm_token | points_total | streak_current | streak_be
 
 **Chores**
 ```
-chore_id | name | location | description | points | frequency | custom_days | monthly_day | monthly_week | monthly_weekday | interval_days | once_date | start_date | lead_days | last_generated_date | default_assignee | requires_approval | active
+chore_id | name | location | description | points | frequency | custom_days | monthly_day | monthly_week | monthly_weekday | interval_days | once_date | start_date | lead_days | last_generated_date | default_assignee | rotation_last | requires_approval | active
 ```
 
 **Locations** (feeds the location dropdown in the chore editor — one row per allowed location)
@@ -305,7 +305,7 @@ npm run test:all    # unit + E2E
 First-time setup (once): `npm install`, then `npx playwright install chromium` to download the browser.
 
 What's covered:
-- **Unit (Vitest):** `src/lib/*` pure logic (date/`formatDate`, `choreSelectors` filtering/sort/state), the `stores/data.js` optimistic mutations, and the **Apps Script backend** logic (`isDueToday`, sheet utils, every action transition, the generator) via an in-memory Google-services harness in `tests/apps-script/`.
+- **Unit (Vitest):** `src/lib/*` pure logic (date/`formatDate`, `choreSelectors` filtering/sort/state, `dueDates` next-due), the `stores/data.js` optimistic mutations, and the **Apps Script backend** logic (scheduling via `nextDueForChore`/`isScheduledDueDay`/`effectiveLeadDays`, sheet utils, every action transition, the generator + missed-chore penalty) via an in-memory Google-services harness in `tests/apps-script/`.
 - **E2E (Playwright):** real user flows on desktop + mobile emulation against a mocked Apps Script endpoint — onboarding, complete-via-circle, the overflow menu, sent-back feedback, claim persistence, overdue, and Manage Chores. The backend is mocked, so E2E never touches the live Sheet.
 
 **Pre-deploy gate (recommended):**
@@ -403,6 +403,8 @@ Optional columns:
 - `start_date` — first date the chore is due (`YYYY-MM-DD`). Blank = starts immediately. The generator won't create assignments before this date. Set it via the chore editor's "First due date" field (e.g. to schedule a monthly/interval chore's first occurrence).
 - `lead_days` — how many days the chore is **visible before it goes overdue**, so its assignment is generated `lead_days − 1` days before the due date. Must be `≥ 1` and **strictly less than the recurrence interval**; **defaults to 1** (appears on its due date — early appearance is opt-in per chore). E.g. a weekly chore due Sunday with `lead_days` 4 appears the previous Thursday (Thu–Sun); daily/once are always 1. Set it via the chore editor's "Days visible before overdue" field; values are clamped to `1…interval−1`.
 - `missed_count` (Assignments) — how many times a still-open assignment has been carried past a recurrence. Instead of piling up duplicate overdue rows, the generator keeps one assignment, bumps `missed_count`, and **deducts the chore's points from the assignee's leaderboard total once per missed recurrence** (clamped at 0). Days overdue is shown from `due_date` (not stored).
+- `default_assignee` — the `person_id` this chore is normally assigned to (blank = unclaimed/claimable). It can also be a **comma-delimited list** to **rotate between people** (e.g. `p_sam,p_alex,p_jo`): each new occurrence goes to the next person in the list, wrapping around. Rotation state is tracked in `rotation_last` (below), so a manual reassignment of one occurrence does **not** shift the order — the next occurrence still goes to whoever was next in line. If the last-planned person is dropped from the list, rotation resets to the first. In the in-app editor the assignee field currently sets a single person; build multi-person rotations by editing the comma list in the sheet. Manage Chores shows a rotation as "A → B → C".
+- `rotation_last` — internal bookkeeping for the rotation above: the `person_id` the generator *planned* to assign most recently (not necessarily who did it). Leave blank; the generator manages it. Not surfaced in the editor.
 
 Frequency-specific columns (leave blank when not applicable):
 - `weekly` → `custom_days`: weekday number 0–6 (0 = Sunday)
@@ -415,7 +417,9 @@ Frequency-specific columns (leave blank when not applicable):
 
 The nightly generator runs at 12:01am. For each active chore it finds the next occurrence and, once today reaches that occurrence's **appear date** (`due − (lead_days − 1)`), creates the assignment with the real (possibly future) due date. If a prior occurrence is still open when the next one comes due, it does **not** create a duplicate — it carries the one assignment over, bumps `missed_count`, and deducts the chore's points from the assignee (see `lead_days` / `missed_count` above). To test it immediately, run `runNightlyGenerator` manually from the Apps Script editor.
 
-**Today screen behavior:** Finished chores (done/skipped) gray out and sort to the bottom of each section; pending-approval chores show in amber (the assignee sees their own as "Waiting for review"). Unfinished chores from previous days stay on Today flagged **Overdue** (sorted to the top) until they're completed or an admin bumps/skips them — there's no age cutoff, so use bump/skip to clear a backlog. A completed chore can be **unchecked** (undo) by the assignee or an admin via the card's "Undo" button, which reverts it to open and removes any awarded points — *except* chores that a parent has already **approved**, which cannot be unchecked.
+> **Gotcha — the generator dedups on `last_generated_date`, not on whether an assignment exists.** Each occurrence is only generated once: after creating (or carrying over) an assignment, the chore's `last_generated_date` is stamped to that occurrence's due date, and the next run looks for the occurrence *after* it. So if `last_generated_date` is already at (or ahead of) today's occurrence but the matching `Assignments` row is missing — e.g. you deleted rows or cleared the tab to test — re-running `runNightlyGenerator` is a **silent no-op**; it believes today is already done. To force a rebuild, blank out `last_generated_date` for the affected chores (and delete any stale rows) before re-running.
+
+**Today screen behavior:** Finished chores (done/skipped) gray out and sort to the bottom of each section; pending-approval chores show in amber (the assignee sees their own as "Waiting for review"). Cards are tinted by frequency (daily blue, weekly green, others yellow) while open. Unfinished chores from previous days stay on Today flagged **Overdue** (sorted to the top) until they're completed or an admin bumps/skips them — there's no age cutoff, so use bump/skip to clear a backlog. An **overdue** chore you check off stays on Today (greyed, at the bottom) for the rest of that day rather than vanishing — it clears at the next midnight rollover. A completed chore can be **unchecked** (undo) by the assignee or an admin via the card's "Undo" button, which reverts it to open and removes any awarded points — *except* chores that a parent has already **approved**, which cannot be unchecked.
 
 **Searching chores:** The Manage Chores screen has a search box (matches name, location, description, and assignee). If a search finds nothing, an **Add "…"** button lets you create it prefilled — handy for avoiding duplicates. Each chore row has an **Edit** button.
 

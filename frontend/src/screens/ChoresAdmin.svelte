@@ -45,10 +45,22 @@
   // Pass `q` and `peopleById` in explicitly so they appear in the reactive
   // statements below — Svelte only tracks dependencies referenced directly in a
   // `$:` line, not ones read inside a called function's body.
+  // Map a default_assignee value — a single person_id or a comma-delimited
+  // rotation list (#24) — to a display string of names joined with " → ".
+  // Returns '' for empty/unclaimed. Unknown ids fall back to the raw id.
+  function assigneeLabel(value, peopleById) {
+    return String(value || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((id) => peopleById[id]?.name ?? id)
+      .join(' → ');
+  }
+
   function matchesSearch(c, q, peopleById) {
     if (!q) return true;
     const assignee = c.default_assignee
-      ? (peopleById[c.default_assignee]?.name ?? c.default_assignee)
+      ? assigneeLabel(c.default_assignee, peopleById)
       : 'Unclaimed';
     return (
       (c.name || '').toLowerCase().includes(q) ||
@@ -59,7 +71,7 @@
   }
 
   $: peopleById = Object.fromEntries(people.map((p) => [p.person_id, p]));
-  $: assigneeName = (id) => (id ? (peopleById[id]?.name ?? id) : null);
+  $: assigneeName = (value) => assigneeLabel(value, peopleById) || null;
   $: todayStr = today();
 
   // Sort comparator for the active list (#15). `peopleById`/`todayStr`/`sortMode`
@@ -72,8 +84,8 @@
     } else if (mode === 'assignee') {
       // Unclaimed (no default assignee) first, then by assignee name.
       arr.sort((a, b) => {
-        const an = a.default_assignee ? (peopleById[a.default_assignee]?.name ?? a.default_assignee) : '';
-        const bn = b.default_assignee ? (peopleById[b.default_assignee]?.name ?? b.default_assignee) : '';
+        const an = a.default_assignee ? assigneeLabel(a.default_assignee, peopleById) : '';
+        const bn = b.default_assignee ? assigneeLabel(b.default_assignee, peopleById) : '';
         if (!an && bn) return -1;
         if (an && !bn) return 1;
         return an.localeCompare(bn);

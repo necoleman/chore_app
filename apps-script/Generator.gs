@@ -73,12 +73,16 @@ function processChoreGeneration(chore, today, allAssignments, people) {
     return null;
   }
 
+  // Resolve who gets this occurrence — rotating through `default_assignee` when
+  // it holds a comma-delimited list (#24).
+  var assignee = resolveRotationAssignee(chore);
+
   // Fresh occurrence — create the assignment (due_date may be in the future).
   var assignmentId = chore.chore_id + '_' + nextDueISO.replace(/-/g, '');
   appendRow('Assignments', {
     assignment_id: assignmentId,
     chore_id: chore.chore_id,
-    person_id: chore.default_assignee || '',
+    person_id: assignee,
     due_date: nextDueISO,
     status: 'open',
     assigned_by: 'auto',
@@ -87,20 +91,51 @@ function processChoreGeneration(chore, today, allAssignments, people) {
   allAssignments.push({
     assignment_id: assignmentId,
     chore_id: chore.chore_id,
-    person_id: chore.default_assignee || '',
+    person_id: assignee,
     due_date: nextDueISO,
     status: 'open',
   });
 
   var choreUpdates = { last_generated_date: nextDueISO };
+  // Advance the rotation pointer to whoever we just planned to assign, so the
+  // sequence is immune to manual reassignment (which changes the assignment's
+  // person_id but not this pointer).
+  if (assignee) choreUpdates.rotation_last = assignee;
   if (chore.frequency === 'once') choreUpdates.active = false; // one-and-done
   updateRow('Chores', 'chore_id', chore.chore_id, choreUpdates);
   chore.last_generated_date = nextDueISO;
+  if (assignee) chore.rotation_last = assignee;
 
-  if (chore.default_assignee) {
-    sendAssignmentNotification(assignmentId, chore.default_assignee);
+  if (assignee) {
+    sendAssignmentNotification(assignmentId, assignee);
   }
   return assignmentId;
+}
+
+// Resolve the assignee for a fresh occurrence, rotating through the chore's
+// `default_assignee` when it's a comma-delimited list of person_ids (#24):
+//
+//   • 0 people → '' (unassigned / claimable).
+//   • 1 person → that person (no rotation).
+//   • 2+ → the person AFTER `rotation_last` in the list (wrapping). When
+//     `rotation_last` is empty (first ever) or no longer in the list, we fall
+//     back to the first person in line.
+//
+// Rotation state lives in the `rotation_last` column — never read from the
+// previous assignment's person_id — so a manual reassignment doesn't move the
+// order: the next occurrence still goes to whoever would have gotten it.
+function resolveRotationAssignee(chore) {
+  var list = String(chore.default_assignee || '')
+    .split(',')
+    .map(function(s) { return s.trim(); })
+    .filter(function(s) { return s.length > 0; });
+
+  if (list.length === 0) return '';
+  if (list.length === 1) return list[0];
+
+  var idx = list.indexOf(chore.rotation_last);
+  if (idx === -1) return list[0];          // first ever, or dropped from list
+  return list[(idx + 1) % list.length];
 }
 
 // Advance the chore's occurrence anchor (idempotent).

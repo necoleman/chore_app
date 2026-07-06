@@ -59,6 +59,55 @@ describe('runNightlyGenerator', () => {
   });
 });
 
+describe('resolveRotationAssignee (#24)', () => {
+  const r = (chore) => {
+    const { ctx } = loadBackend();
+    return ctx.resolveRotationAssignee(chore);
+  };
+  it('empty list → unassigned', () => expect(r({ default_assignee: '' })).toBe(''));
+  it('single person → that person (no rotation)', () =>
+    expect(r({ default_assignee: 'p_a', rotation_last: 'p_a' })).toBe('p_a'));
+  it('list with no prior pointer → first in line', () =>
+    expect(r({ default_assignee: 'p_a,p_b,p_c' })).toBe('p_a'));
+  it('advances to the person after rotation_last', () =>
+    expect(r({ default_assignee: 'p_a,p_b,p_c', rotation_last: 'p_a' })).toBe('p_b'));
+  it('wraps around at the end', () =>
+    expect(r({ default_assignee: 'p_a,p_b,p_c', rotation_last: 'p_c' })).toBe('p_a'));
+  it('rotation_last dropped from the list → first in line', () =>
+    expect(r({ default_assignee: 'p_a,p_b,p_c', rotation_last: 'p_x' })).toBe('p_a'));
+  it('trims whitespace around ids', () =>
+    expect(r({ default_assignee: 'p_a, p_b , p_c', rotation_last: 'p_a' })).toBe('p_b'));
+});
+
+describe('runNightlyGenerator — rotation (#24)', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('first occurrence of a rotating chore goes to the first person and stamps the pointer', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 5, 28, 0, 5, 0)); // 2026-06-28
+    const { ctx, read } = loadBackend({
+      Chores: [{ chore_id: 'c1', frequency: 'daily', active: 'TRUE', default_assignee: 'p_a,p_b,p_c' }],
+    });
+    ctx.runNightlyGenerator();
+    expect(read('Assignments')[0].person_id).toBe('p_a');
+    expect(read('Chores')[0].rotation_last).toBe('p_a');
+  });
+
+  it('advances by rotation_last, not the last assignment’s person (reassign-immune)', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 5, 28, 0, 5, 0)); // 2026-06-28
+    const { ctx, read } = loadBackend({
+      // Pointer says p_a was planned last; yesterday's row was manually reassigned
+      // to p_z (off-list). The next occurrence must still follow p_a → p_b.
+      Chores: [{ chore_id: 'c1', frequency: 'daily', active: 'TRUE',
+                 default_assignee: 'p_a,p_b,p_c', rotation_last: 'p_a', last_generated_date: '2026-06-27' }],
+      Assignments: [{ assignment_id: 'y', chore_id: 'c1', due_date: '2026-06-27', status: 'done', person_id: 'p_z' }],
+    });
+    ctx.runNightlyGenerator();
+    const fresh = read('Assignments').find((a) => a.due_date === '2026-06-28');
+    expect(fresh.person_id).toBe('p_b');
+    expect(read('Chores')[0].rotation_last).toBe('p_b');
+  });
+});
+
 describe('runNightlyGenerator — lead time (#23)', () => {
   // NOTE: fake timers must be set BEFORE loadBackend — the Apps Script sandbox
   // captures the `Date` binding at load time.
