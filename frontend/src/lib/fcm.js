@@ -16,7 +16,7 @@ function getFirebaseApp() {
 }
 
 export async function registerFCM(person_id) {
-  if (!('Notification' in window)) return null;
+  if (!isNotificationSupported()) return null;
   if (Notification.permission === 'denied') return null;
 
   const permission = await Notification.requestPermission();
@@ -24,8 +24,15 @@ export async function registerFCM(person_id) {
 
   const app = getFirebaseApp();
   const messaging = getMessaging(app);
+
+  // Reuse the app's own service worker (sw.js, registered by vite-plugin-pwa)
+  // for FCM. Without an explicit registration the SDK tries to register a
+  // nonexistent /firebase-messaging-sw.js and token retrieval fails — so this
+  // project's combined sw.js would never receive background pushes.
+  const serviceWorkerRegistration = await navigator.serviceWorker.ready;
   const token = await getToken(messaging, {
     vapidKey: import.meta.env.VITE_FCM_VAPID_KEY,
+    serviceWorkerRegistration,
   });
 
   await post('register_token', { person_id, fcm_token: token });

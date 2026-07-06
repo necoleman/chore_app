@@ -126,6 +126,10 @@ assignment_id | chore_id | person_id | due_date | status | completed_at | assign
      - `FCM_PROJECT_ID` ← `project_id` from the JSON
    - These go **only** in Script Properties — never in `.env.local` or repository secrets.
 
+5. **(Enable the API)** The backend sends via the FCM HTTP **v1** endpoint (`fcm.googleapis.com/v1/...`), which requires the **Firebase Cloud Messaging API (V1)** to be enabled on the project. It's on by default for most Firebase projects. If push later logs a `403`/`404` (see [Push Notifications](#push-notifications)), enable it at **Google Cloud Console → APIs & Services → Enabled APIs & services → + Enable APIs and services → "Firebase Cloud Messaging API"** for this project.
+
+> See the [**Push Notifications**](#push-notifications) section below for how push works end-to-end, the **iOS Home-Screen requirement**, and how to test it.
+
 ---
 
 ## Step 4 — Configure and Build the Frontend
@@ -154,9 +158,9 @@ assignment_id | chore_id | person_id | due_date | status | completed_at | assign
    VITE_FCM_VAPID_KEY=...
    ```
 
-3. Add app icons. Place PNG files at:
-   - `frontend/public/icons/icon-192.png` (192×192)
-   - `frontend/public/icons/icon-512.png` (512×512, should be maskable)
+3. App icons. The repo already ships **placeholder** solid-green icons at these paths so the build and notifications have a valid icon — replace them with your real artwork (same paths/sizes) when ready:
+   - `frontend/public/icons/icon-192.png` (192×192) — also the notification icon/badge
+   - `frontend/public/icons/icon-512.png` (512×512, should be maskable — keep content in the center ~80%)
 
 4. Install dependencies and run locally to verify. **All npm commands must be run from the `frontend/` directory**, not the repo root:
 
@@ -426,6 +430,40 @@ The nightly generator runs at 12:01am. For each active chore it finds the next o
 **Manage Chores extras:** Each row shows a **"Next: …"** tag for non-daily chores (a weekday name for weekly/custom, e.g. "Tuesday", or a date for monthly/interval/once; daily shows nothing). A **Sort** dropdown reorders by Default, Location, Assignee (unclaimed first), Periodicity, or Next due (soonest first). Long descriptions collapse to one line with a carat to expand.
 
 **Reassign / make unclaimed:** On the Today screen, a chore's three-dot menu can **Reassign** it to another person, **Move date**, or **Make unclaimed** (send it back to the "Available to Claim" bucket without picking a new person).
+
+---
+
+## Push Notifications
+
+Push is **optional** — the app works fully without it — but reminders and admin review pings are a big convenience. This section covers how it works end-to-end, the iOS gotcha, and how to verify it. (Setup of the Firebase credentials themselves is in [Step 3](#step-3--set-up-firebase-for-push-notifications).)
+
+### How it works (end to end)
+
+1. **Register a device token.** On onboarding, each person taps **Allow Notifications**. The app requests permission, obtains an FCM token *via the app's service worker* (`src/sw.js`), and stores it in that person's `fcm_token` cell (People tab) through the `register_token` endpoint. Tokens are **per device/browser** — everyone taps Allow once on *each* device they use. (Under the hood: `registerFCM` in `src/lib/fcm.js` passes the vite-plugin-pwa service-worker registration to Firebase's `getToken`.)
+2. **Triggers decide when to send.** The `runReminderPush` trigger runs **every 30 minutes** but only acts **after `REMINDER_HOUR`** (Script Property, default `18` = 6pm). After that hour, for each still-**open** chore due **today** with an assignee it sends a "Don't forget!" push, and it sends **admins** a digest of how many chores are **waiting for review**. Because it runs every 30 min, an unfinished chore re-pings roughly every half hour until it's completed or the day ends. Separately, **reassigning, moving (bump), or auto-assigning** a chore — including a rotation turn — sends that person an **immediate** push.
+3. **Apps Script → FCM.** `sendPush` (`Reminders.gs`) authenticates as the Firebase **service account** (a self-signed JWT exchanged for an OAuth token — no external library) and calls the FCM HTTP **v1** API with `FCM_PROJECT_ID`.
+4. **Delivery.** When the app is in the foreground the message surfaces in-app (`listenForeground`); when it's backgrounded/closed the **service worker** shows it (`onBackgroundMessage` in `src/sw.js`), using `icons/icon-192.png`.
+
+### ⚠️ iOS / iPadOS requirement (read this first)
+
+On iPhone/iPad, web push **only works when the app is installed to the Home Screen** — Safari **Share → Add to Home Screen** — and on **iOS/iPadOS 16.4 or newer**. In a regular Safari **tab**, the **Allow Notifications** button silently does nothing; this is an Apple platform restriction, not an app bug. So on iPhone: **install to the Home Screen first, open the installed app, then tap Allow Notifications.** Android and desktop Chrome/Edge work in a normal browser tab (no install required).
+
+### Testing push
+
+1. Register at least one device (tap **Allow Notifications**, then confirm that person's `fcm_token` is filled in the People tab).
+2. In the Apps Script editor, temporarily lower `REMINDER_HOUR` (else the time gate skips before 6pm) and run **`runReminderPush`** from the function dropdown. Or send a one-off directly from the editor:
+   ```js
+   function testPush() {
+     var token = getRows('People')[0].fcm_token; // pick a row that has a token
+     sendPush(token, 'Test', 'Hello from the chore app');
+   }
+   ```
+3. Open **Executions** (left sidebar). On success the notification arrives on the device. On failure the log shows `FCM error: …` (e.g. an unregistered/expired token, or the **Firebase Cloud Messaging API** not enabled — see [Step 3.5](#step-3--set-up-firebase-for-push-notifications)) or `sendPush failed: …`.
+4. **Stale tokens.** A token can go dead (app deleted, notification permission reset, token rotated). If someone stops receiving pushes, have them tap **Allow Notifications** again to re-register; clear the old `fcm_token` if it lingers. FCM push is **not** covered by the automated test suite — verify it on a real device after changes to `Reminders.gs`, `src/lib/fcm.js`, or `src/sw.js`.
+
+### Notification icons
+
+The push icon and badge come from `frontend/public/icons/icon-192.png` (the same placeholder icon shipped for the PWA install). Replace it with real artwork — see `frontend/public/icons/README.md`.
 
 ---
 
