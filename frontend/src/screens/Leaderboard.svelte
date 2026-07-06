@@ -2,8 +2,10 @@
   import { onMount } from 'svelte';
   import { get as apiGet } from '../api/client.js';
   import { assignments } from '../stores/data.js';
+  import { currentUser } from '../stores/user.js';
   import { startOfWeek } from '../lib/utils.js';
   import LeaderboardRow from '../components/LeaderboardRow.svelte';
+  import NotificationSettings from '../components/NotificationSettings.svelte';
 
   let people = [];
   let loading = true;
@@ -51,6 +53,10 @@
         />
       {/each}
     </section>
+  {/if}
+
+  {#if $currentUser}
+    <NotificationSettings personId={$currentUser.person_id} />
   {/if}
 </div>
 
