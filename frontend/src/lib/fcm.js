@@ -30,12 +30,25 @@ export async function registerFCM(person_id) {
   // nonexistent /firebase-messaging-sw.js and token retrieval fails — so this
   // project's combined sw.js would never receive background pushes.
   const serviceWorkerRegistration = await navigator.serviceWorker.ready;
-  const token = await getToken(messaging, {
-    vapidKey: import.meta.env.VITE_FCM_VAPID_KEY,
-    serviceWorkerRegistration,
-  });
+  let token;
+  try {
+    token = await getToken(messaging, {
+      vapidKey: import.meta.env.VITE_FCM_VAPID_KEY,
+      serviceWorkerRegistration,
+    });
+  } catch (e) {
+    // getToken can reject on Android (bad VAPID key, push-subscription failure,
+    // permission revoked at the OS level). Log it so remote debugging can see the
+    // real cause instead of a generic "Couldn't enable" toast.
+    console.error('[fcm] getToken failed:', e);
+    throw e;
+  }
 
-  await post('register_token', { person_id, fcm_token: token });
+  console.log('[fcm] getToken result:', token ? `token(len=${token.length})` : token);
+  if (!token) return null;
+
+  const res = await post('register_token', { person_id, fcm_token: token });
+  console.log('[fcm] register_token response:', res);
   return token;
 }
 

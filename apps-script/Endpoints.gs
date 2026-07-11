@@ -513,9 +513,15 @@ function actionRegisterToken(body) {
   var personId = body.person_id;
   var fcmToken = body.fcm_token;
   if (!personId || !fcmToken) throw new Error('person_id and fcm_token required');
-  updateRow('People', 'person_id', personId, { fcm_token: fcmToken });
+
+  // updateRow silently no-ops when the person_id row (or the fcm_token column)
+  // isn't found, which previously let a failed write report success and leave
+  // the sheet blank. Surface it instead so the client shows an error toast.
+  var found = updateRow('People', 'person_id', personId, { fcm_token: fcmToken });
+  if (!found) throw new Error('No People row for person_id: ' + personId);
+
   invalidateCache('People');
-  return { success: true };
+  return { success: true, token_length: String(fcmToken).length };
 }
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────

@@ -358,6 +358,28 @@ describe('generate-on-create (#17)', () => {
   });
 });
 
+describe('actionRegisterToken', () => {
+  it('saves the token and reports its length', () => {
+    const { ctx, read } = loadBackend({ People: [{ person_id: 'me', name: 'Me' }] });
+    const res = ctx.actionRegisterToken({ person_id: 'me', fcm_token: 'abc123' });
+    expect(res.success).toBe(true);
+    expect(res.token_length).toBe(6);
+    expect(read('People')[0].fcm_token).toBe('abc123');
+  });
+
+  it('throws when no People row matches (surfaces the silent no-op)', () => {
+    const { ctx } = loadBackend({ People: [{ person_id: 'me' }] });
+    expect(() => ctx.actionRegisterToken({ person_id: 'ghost', fcm_token: 'x' }))
+      .toThrow(/No People row/);
+  });
+
+  it('requires both person_id and fcm_token', () => {
+    const { ctx } = loadBackend({ People: [{ person_id: 'me' }] });
+    expect(() => ctx.actionRegisterToken({ person_id: 'me' })).toThrow(/required/);
+    expect(() => ctx.actionRegisterToken({ fcm_token: 'x' })).toThrow(/required/);
+  });
+});
+
 describe('incrementPoints', () => {
   it('clamps the total at zero on subtraction', () => {
     const { ctx, read } = loadBackend({ People: [{ person_id: 'p', points_total: 2 }] });
