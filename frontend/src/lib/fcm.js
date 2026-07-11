@@ -1,5 +1,6 @@
 import { initializeApp, getApps } from 'firebase/app';
-import { getMessaging, getToken, onMessage } from 'firebase/messaging';
+import { getMessaging, getToken, deleteToken, onMessage } from 'firebase/messaging';
+import { getInstallations, deleteInstallations } from 'firebase/installations';
 import { post } from '../api/client.js';
 
 const firebaseConfig = {
@@ -30,18 +31,24 @@ export async function registerFCM(person_id) {
   // nonexistent /firebase-messaging-sw.js and token retrieval fails — so this
   // project's combined sw.js would never receive background pushes.
   const serviceWorkerRegistration = await navigator.serviceWorker.ready;
+  const fetchToken = () => getToken(messaging, {
+    vapidKey: import.meta.env.VITE_FCM_VAPID_KEY,
+    serviceWorkerRegistration,
+  });
+
   let token;
   try {
-    token = await getToken(messaging, {
-      vapidKey: import.meta.env.VITE_FCM_VAPID_KEY,
-      serviceWorkerRegistration,
-    });
+    token = await fetchToken();
   } catch (e) {
-    // getToken can reject on Android (bad VAPID key, push-subscription failure,
-    // permission revoked at the OS level). Log it so remote debugging can see the
-    // real cause instead of a generic "Couldn't enable" toast.
-    console.error('[fcm] getToken failed:', e);
-    throw e;
+    // getToken rejected — most often a 401 from fcmregistrations.googleapis.com,
+    // meaning the stored FCM token / Firebase Installation is stale and Firebase
+    // now rejects its credentials. Purge both and retry once so "Re-register"
+    // self-heals from a bad token state. (A genuine config problem — restricted
+    // apiKey, disabled FCM API — will 401 again and surface to the caller.)
+    console.error('[fcm] getToken failed, resetting installation & retrying:', e);
+    try { await deleteToken(messaging); } catch (_) { /* nothing to delete */ }
+    try { await deleteInstallations(getInstallations(app)); } catch (_) { /* ditto */ }
+    token = await fetchToken();
   }
 
   console.log('[fcm] getToken result:', token ? `token(len=${token.length})` : token);
