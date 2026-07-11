@@ -83,6 +83,27 @@ function updateRow(sheetName, keyCol, keyVal, updates) {
 }
 
 /**
+ * Deletes the first row where column `keyCol` equals `keyVal`.
+ * Returns true if a row was found and deleted.
+ */
+function deleteRow(sheetName, keyCol, keyVal) {
+  var sheet = getSheet(sheetName);
+  var values = sheet.getDataRange().getValues();
+  if (values.length < 2) return false;
+  var headers = values[0];
+  var keyIdx = headers.indexOf(keyCol);
+  if (keyIdx === -1) throw new Error('Column not found: ' + keyCol + ' in ' + sheetName);
+
+  for (var i = 1; i < values.length; i++) {
+    if (String(values[i][keyIdx]) === String(keyVal)) {
+      sheet.deleteRow(i + 1);
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Simple short unique id: prefix + 8 hex chars.
  */
 function generateId(prefix) {

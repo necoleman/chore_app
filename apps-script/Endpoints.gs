@@ -267,6 +267,27 @@ function actionReject(body) {
     review_note: reviewNote,
   });
 
+  // #25: A daily chore whose prior (pending) occurrence is sent back becomes
+  // overdue again (its due_date is now in the past → renders overdue). Because
+  // the nightly generator already created a fresh occurrence "as if yesterday
+  // was done", we must reconcile that newer occurrence so we don't end up with
+  // two live rows for the same daily chore:
+  //   (a) a newer OPEN occurrence is deleted — the sent-back one is the single
+  //       outstanding assignment to redo;
+  //   (b) a newer done/pending occurrence is left alone — the work is done.
+  // Scoped to daily chores (per the enhancement); other frequencies rely on the
+  // lead-window collapse in the generator and are left untouched.
+  var chore = getRows('Chores').find(function(c) { return c.chore_id === assignment.chore_id; });
+  if (chore && chore.frequency === 'daily') {
+    getRows('Assignments').forEach(function(a) {
+      if (a.chore_id !== assignment.chore_id) return;
+      if (a.due_date <= assignment.due_date) return;      // only NEWER occurrences
+      if (a.status === 'open') {
+        deleteRow('Assignments', 'assignment_id', a.assignment_id);
+      }
+    });
+  }
+
   invalidateCache('Assignments');
   return { status: 'open', review_note: reviewNote, reviewed_at: now };
 }

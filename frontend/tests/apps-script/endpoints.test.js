@@ -145,6 +145,50 @@ describe('actionApprove / actionReject', () => {
     expect(row.review_note).toBe('redo it');
     expect(row.reviewed_by).toBe('dad');
   });
+
+  it('rejecting a daily pending deletes a newer OPEN occurrence (#25a)', () => {
+    const { ctx, read } = loadBackend({
+      People: [{ person_id: 'dad' }],
+      Chores: [{ chore_id: 'c1', frequency: 'daily' }],
+      Assignments: [
+        { assignment_id: 'yday', chore_id: 'c1', person_id: 'kid', due_date: '2026-06-27', status: 'pending_review' },
+        { assignment_id: 'today', chore_id: 'c1', person_id: 'kid', due_date: '2026-06-28', status: 'open' },
+      ],
+    });
+    ctx.actionReject({ assignment_id: 'yday', admin_person_id: 'dad', review_note: 'redo' });
+    const ids = read('Assignments').map((a) => a.assignment_id);
+    expect(ids).toContain('yday');       // reopened, now overdue
+    expect(ids).not.toContain('today');  // newer open occurrence removed
+    expect(read('Assignments').find((a) => a.assignment_id === 'yday').status).toBe('open');
+  });
+
+  it('rejecting a daily pending leaves a newer done/pending occurrence (#25b)', () => {
+    const { ctx, read } = loadBackend({
+      People: [{ person_id: 'dad' }],
+      Chores: [{ chore_id: 'c1', frequency: 'daily' }],
+      Assignments: [
+        { assignment_id: 'yday', chore_id: 'c1', person_id: 'kid', due_date: '2026-06-27', status: 'pending_review' },
+        { assignment_id: 'today', chore_id: 'c1', person_id: 'kid', due_date: '2026-06-28', status: 'done' },
+      ],
+    });
+    ctx.actionReject({ assignment_id: 'yday', admin_person_id: 'dad', review_note: 'redo' });
+    const ids = read('Assignments').map((a) => a.assignment_id);
+    expect(ids).toContain('today');      // work already done — untouched
+  });
+
+  it('reject reconciliation only fires for daily chores (weekly untouched)', () => {
+    const { ctx, read } = loadBackend({
+      People: [{ person_id: 'dad' }],
+      Chores: [{ chore_id: 'c1', frequency: 'weekly' }],
+      Assignments: [
+        { assignment_id: 'wk1', chore_id: 'c1', person_id: 'kid', due_date: '2026-06-21', status: 'pending_review' },
+        { assignment_id: 'wk2', chore_id: 'c1', person_id: 'kid', due_date: '2026-06-28', status: 'open' },
+      ],
+    });
+    ctx.actionReject({ assignment_id: 'wk1', admin_person_id: 'dad', review_note: 'redo' });
+    const ids = read('Assignments').map((a) => a.assignment_id);
+    expect(ids).toContain('wk2');        // non-daily: left to the generator's collapse
+  });
 });
 
 describe('actionUncomplete', () => {

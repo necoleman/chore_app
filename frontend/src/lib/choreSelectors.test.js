@@ -125,6 +125,25 @@ describe('splitTodaySections', () => {
     expect(mine.map((x) => x.assignment_id)).toEqual(['mine-earlier', 'mine-later', 'mine-done']);
   });
 
+  it('default sort puts overdue at top and future at bottom of each list (#27)', () => {
+    const list = [
+      a({ assignment_id: 'mine-future', person_id: 'me', status: 'open', due_date: '2026-06-30', lead_days: 5 }),
+      a({ assignment_id: 'mine-today', person_id: 'me', status: 'open', due_date: TODAY }),
+      a({ assignment_id: 'mine-overdue', person_id: 'me', status: 'open', due_date: '2026-06-25' }),
+    ];
+    const { mine } = splitTodaySections(list, me, true, TODAY);
+    expect(mine.map((x) => x.assignment_id)).toEqual(['mine-overdue', 'mine-today', 'mine-future']);
+  });
+
+  it('default sort orders the unassigned section overdue→future too (#27)', () => {
+    const list = [
+      a({ assignment_id: 'un-future', person_id: null, status: 'open', due_date: '2026-06-30', lead_days: 5 }),
+      a({ assignment_id: 'un-overdue', person_id: null, status: 'open', due_date: '2026-06-25' }),
+    ];
+    const { unassigned } = splitTodaySections(list, me, true, TODAY);
+    expect(unassigned.map((x) => x.assignment_id)).toEqual(['un-overdue', 'un-future']);
+  });
+
   it('sortMode "frequency" orders my section by cadence (finished still last)', () => {
     const list = [
       a({ assignment_id: 'mine-monthly', person_id: 'me', status: 'open', frequency: 'monthly', due_date: '2026-06-25' }),

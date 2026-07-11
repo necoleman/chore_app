@@ -19,6 +19,7 @@
   $: pendingReview = sections.pendingReview;
   $: myAssignments = sections.mine;
   $: familyGroups = sections.familyGroups;
+  $: familyCount = familyGroups.reduce((n, g) => n + g.items.length, 0);
   $: unassigned = sections.unassigned;
 
   let showQuickAdd = false;
@@ -73,18 +74,24 @@
     {/if}
   </section>
 
-  <!-- Family's chores -->
+  <!-- Family's chores — collapsed into a single dropdown by default (#26) so
+       each user sees only their own + unclaimed chores at a glance. -->
   {#if familyGroups.length > 0}
     <section class="section">
-      <h2 class="section-title">Family</h2>
-      {#each familyGroups as group}
-        <div class="family-group">
-          <span class="family-name">{group.name}</span>
-          {#each group.items as a (a.assignment_id)}
-            <ChoreCard assignment={a} showAdminControls={isAdmin} readonly={true} />
-          {/each}
-        </div>
-      {/each}
+      <details class="family-details">
+        <summary class="family-summary">
+          <span class="section-title family-heading">Family</span>
+          <span class="family-count">{familyCount} {familyCount === 1 ? 'chore' : 'chores'}</span>
+        </summary>
+        {#each familyGroups as group}
+          <div class="family-group">
+            <span class="family-name">{group.name}</span>
+            {#each group.items as a (a.assignment_id)}
+              <ChoreCard assignment={a} showAdminControls={isAdmin} readonly={true} />
+            {/each}
+          </div>
+        {/each}
+      </details>
     </section>
   {/if}
 
@@ -206,8 +213,55 @@
     padding: 20px 0;
   }
 
+  .family-details {
+    margin-bottom: 8px;
+  }
+
+  .family-summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    list-style: none;
+    padding: 12px 0 8px;
+    user-select: none;
+  }
+
+  .family-summary::-webkit-details-marker {
+    display: none;
+  }
+
+  /* Caret that rotates when the dropdown is open. */
+  .family-summary::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-right: 2px solid #9ca3af;
+    border-bottom: 2px solid #9ca3af;
+    transform: rotate(-45deg);
+    transition: transform 0.15s ease;
+  }
+
+  .family-details[open] .family-summary::before {
+    transform: rotate(45deg);
+  }
+
+  .family-heading {
+    padding: 0;
+  }
+
+  .family-count {
+    font-size: 12px;
+    font-weight: 600;
+    color: #9ca3af;
+  }
+
   .family-group {
     margin-bottom: 12px;
+  }
+
+  .family-group:first-of-type {
+    margin-top: 4px;
   }
 
   .family-name {

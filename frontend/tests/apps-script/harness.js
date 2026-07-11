@@ -74,6 +74,7 @@ export function loadBackend(initial = {}) {
         };
       },
       appendRow(arr) { store[name].push(arr.slice()); },
+      deleteRow(rowIndex) { store[name].splice(rowIndex - 1, 1); },
     };
   }
 

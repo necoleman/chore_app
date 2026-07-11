@@ -37,17 +37,17 @@ export function rankAssignment(a, todayStr) {
 const FREQ_ORDER = { daily: 0, weekly: 1, custom: 2, monthly: 3, interval: 4, once: 5 };
 
 // Comparator for within-section ordering (#22). Every mode keeps finished items
-// last (via rankAssignment); 'default' also keeps overdue-first, 'due' sorts by
-// due date ascending, 'frequency' by the cadence order above.
+// last (via rankAssignment); 'default' keeps overdue-first then orders by due
+// date ascending so future chores sink to the bottom of each person's list
+// (#27); 'due' sorts by due date ascending; 'frequency' by the cadence order.
 export function makeSectionComparator(sortMode, todayStr) {
   const byRank = (x, y) => rankAssignment(x, todayStr) - rankAssignment(y, todayStr);
-  if (sortMode === 'due') {
-    return (x, y) => byRank(x, y) || (x.due_date || '').localeCompare(y.due_date || '');
-  }
+  const byDue = (x, y) => (x.due_date || '').localeCompare(y.due_date || '');
   if (sortMode === 'frequency') {
     return (x, y) => byRank(x, y) || ((FREQ_ORDER[x.frequency] ?? 9) - (FREQ_ORDER[y.frequency] ?? 9));
   }
-  return byRank;
+  // 'default' and 'due' both rank then order by due date ascending (#27).
+  return (x, y) => byRank(x, y) || byDue(x, y);
 }
 
 // Split today's assignments into the Today screen's sections.
@@ -77,7 +77,9 @@ export function splitTodaySections(assignments, currentUser, isAdmin, todayStr, 
     items: [...g.items].sort(byStatus),
   }));
 
-  const unassigned = todays.filter((a) => !a.person_id && a.status === 'open');
+  const unassigned = todays
+    .filter((a) => !a.person_id && a.status === 'open')
+    .sort(byStatus);
 
   return { pendingReview, mine, familyGroups, unassigned };
 }
