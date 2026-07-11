@@ -3,14 +3,21 @@ import { getMessaging, getToken, deleteToken, onMessage } from 'firebase/messagi
 import { getInstallations, deleteInstallations } from 'firebase/installations';
 import { post } from '../api/client.js';
 
+// Trim every env value: a stray trailing newline/space in .env (seen on the
+// VAPID key — it reached FCM as `applicationPubKey:"…\n"`) corrupts the push
+// subscription's applicationServerKey and makes fcmregistrations reject it.
+const env = (key) => import.meta.env[key]?.trim();
+
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FCM_API_KEY,
-  authDomain: import.meta.env.VITE_FCM_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FCM_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FCM_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FCM_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FCM_APP_ID,
+  apiKey: env('VITE_FCM_API_KEY'),
+  authDomain: env('VITE_FCM_AUTH_DOMAIN'),
+  projectId: env('VITE_FCM_PROJECT_ID'),
+  storageBucket: env('VITE_FCM_STORAGE_BUCKET'),
+  messagingSenderId: env('VITE_FCM_MESSAGING_SENDER_ID'),
+  appId: env('VITE_FCM_APP_ID'),
 };
+
+const VAPID_KEY = env('VITE_FCM_VAPID_KEY');
 
 function getFirebaseApp() {
   return getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
@@ -32,7 +39,7 @@ export async function registerFCM(person_id) {
   // project's combined sw.js would never receive background pushes.
   const serviceWorkerRegistration = await navigator.serviceWorker.ready;
   const fetchToken = () => getToken(messaging, {
-    vapidKey: import.meta.env.VITE_FCM_VAPID_KEY,
+    vapidKey: VAPID_KEY,
     serviceWorkerRegistration,
   });
 

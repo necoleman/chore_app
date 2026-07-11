@@ -36,13 +36,16 @@ try {
   importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js');
   importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js');
 
+  // Trim env values so a stray newline/space in .env can't corrupt the config
+  // (matches src/lib/fcm.js).
+  const env = (key) => import.meta.env[key]?.trim();
   firebase.initializeApp({
-    apiKey: import.meta.env.VITE_FCM_API_KEY,
-    authDomain: import.meta.env.VITE_FCM_AUTH_DOMAIN,
-    projectId: import.meta.env.VITE_FCM_PROJECT_ID,
-    storageBucket: import.meta.env.VITE_FCM_STORAGE_BUCKET,
-    messagingSenderId: import.meta.env.VITE_FCM_MESSAGING_SENDER_ID,
-    appId: import.meta.env.VITE_FCM_APP_ID,
+    apiKey: env('VITE_FCM_API_KEY'),
+    authDomain: env('VITE_FCM_AUTH_DOMAIN'),
+    projectId: env('VITE_FCM_PROJECT_ID'),
+    storageBucket: env('VITE_FCM_STORAGE_BUCKET'),
+    messagingSenderId: env('VITE_FCM_MESSAGING_SENDER_ID'),
+    appId: env('VITE_FCM_APP_ID'),
   });
 
   const messaging = firebase.messaging();
