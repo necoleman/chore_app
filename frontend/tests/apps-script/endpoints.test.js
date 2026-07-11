@@ -387,3 +387,47 @@ describe('incrementPoints', () => {
     expect(read('People')[0].points_total).toBe(0);
   });
 });
+
+describe('actionSetVacation (#29)', () => {
+  it('turning ON flags the person and moves their OPEN assignments to unclaimed', () => {
+    const { ctx, read } = loadBackend({
+      People: [{ person_id: 'kid', name: 'Kid' }],
+      Chores: [{ chore_id: 'c1', name: 'Dishes' }],
+      Assignments: [
+        { assignment_id: 'open1', chore_id: 'c1', person_id: 'kid', status: 'open', due_date: '2026-06-28' },
+        { assignment_id: 'done1', chore_id: 'c1', person_id: 'kid', status: 'done', due_date: '2026-06-28' },
+      ],
+    });
+    const res = ctx.actionSetVacation({ person_id: 'kid', on_vacation: true });
+    expect(res.on_vacation).toBe(true);
+    expect(read('People')[0].on_vacation).toBe(true);
+    const rows = read('Assignments');
+    expect(rows.find((a) => a.assignment_id === 'open1').person_id).toBe(''); // unclaimed
+    expect(rows.find((a) => a.assignment_id === 'done1').person_id).toBe('kid'); // done left alone
+  });
+
+  it('turning OFF re-homes unclaimed open chores whose SOLE default is this person', () => {
+    const { ctx, read } = loadBackend({
+      People: [{ person_id: 'kid', name: 'Kid', on_vacation: true }],
+      Chores: [
+        { chore_id: 'c1', name: 'Dishes', default_assignee: 'kid' },        // sole default
+        { chore_id: 'c2', name: 'Trash', default_assignee: 'kid,dad' },      // shared/rotation
+      ],
+      Assignments: [
+        { assignment_id: 'a1', chore_id: 'c1', person_id: '', status: 'open', due_date: '2026-06-28' },
+        { assignment_id: 'a2', chore_id: 'c2', person_id: '', status: 'open', due_date: '2026-06-28' },
+      ],
+    });
+    ctx.actionSetVacation({ person_id: 'kid', on_vacation: false });
+    expect(read('People')[0].on_vacation).toBe(false);
+    const rows = read('Assignments');
+    expect(rows.find((a) => a.assignment_id === 'a1').person_id).toBe('kid'); // re-homed
+    expect(rows.find((a) => a.assignment_id === 'a2').person_id).toBe('');    // rotation stays unclaimed
+  });
+
+  it('throws for an unknown person, requires person_id', () => {
+    const { ctx } = loadBackend({ People: [{ person_id: 'kid' }] });
+    expect(() => ctx.actionSetVacation({ person_id: 'ghost', on_vacation: true })).toThrow(/No People row/);
+    expect(() => ctx.actionSetVacation({ on_vacation: true })).toThrow(/required/);
+  });
+});

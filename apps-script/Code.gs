@@ -69,6 +69,7 @@ function dispatchPost(action, body) {
     case 'add_chore':      return actionAddChore(body);
     case 'update_chore':   return actionUpdateChore(body);
     case 'register_token': return actionRegisterToken(body);
+    case 'set_vacation':   return actionSetVacation(body);
     default:               throw new Error('Unknown action: ' + action);
   }
 }

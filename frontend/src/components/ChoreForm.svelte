@@ -28,10 +28,15 @@
         once_date: '',
         start_date: '',
         lead_days: '',
+        recur_mode: 'rollover',
         default_assignee: '',
         requires_approval: false,
         active: true,
       };
+
+  // Legacy chores have no recur_mode — treat blank as the default "rollover" so
+  // the <select> shows a valid option (#30).
+  if (!form.recur_mode) form.recur_mode = 'rollover';
 
   // Show the chore's current location even if it's no longer in the managed list
   // (e.g. a legacy value), so editing never silently drops it.
@@ -288,6 +293,16 @@
             class="input input--sm"
             placeholder="default 1"
           />
+        </label>
+      {/if}
+
+      {#if form.frequency !== 'once'}
+        <label class="field">
+          <span class="label">If not done when it recurs</span>
+          <select bind:value={form.recur_mode} class="input">
+            <option value="rollover">Roll over (keep one overdue item)</option>
+            <option value="recreate">Recreate (stack a new one each time)</option>
+          </select>
         </label>
       {/if}
 

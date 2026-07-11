@@ -79,6 +79,79 @@ describe('resolveRotationAssignee (#24)', () => {
     expect(r({ default_assignee: 'p_a, p_b , p_c', rotation_last: 'p_a' })).toBe('p_b'));
 });
 
+describe('resolveRotationAssignee — vacation skip (#29)', () => {
+  const r = (chore, people) => {
+    const { ctx } = loadBackend();
+    return ctx.resolveRotationAssignee(chore, people);
+  };
+  const away = (id) => ({ person_id: id, on_vacation: true });
+
+  it('sole assignee on vacation → unclaimed', () =>
+    expect(r({ default_assignee: 'p_a' }, [away('p_a')])).toBe(''));
+  it('sole assignee not on vacation → that person', () =>
+    expect(r({ default_assignee: 'p_a' }, [{ person_id: 'p_a', on_vacation: false }])).toBe('p_a'));
+  it('rotation skips the vacationer to the next available person', () =>
+    expect(r({ default_assignee: 'p_a,p_b,p_c', rotation_last: 'p_a' }, [away('p_b')])).toBe('p_c'));
+  it('rotation wraps past a vacationer at the end', () =>
+    expect(r({ default_assignee: 'p_a,p_b,p_c', rotation_last: 'p_b' }, [away('p_c')])).toBe('p_a'));
+  it('everyone on vacation → unclaimed', () =>
+    expect(r({ default_assignee: 'p_a,p_b' }, [away('p_a'), away('p_b')])).toBe(''));
+  it('no people arg behaves exactly as before (no vacations)', () =>
+    expect(r({ default_assignee: 'p_a,p_b,p_c', rotation_last: 'p_a' })).toBe('p_b'));
+});
+
+describe('runNightlyGenerator — recreate vs rollover (#30)', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('rollover (default): a still-open prior collapses, no second row', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 5, 29, 0, 5, 0)); // 2026-06-29
+    const { ctx, read } = loadBackend({
+      People: [{ person_id: 'kid', points_total: 10 }],
+      Chores: [{ chore_id: 'c1', frequency: 'daily', active: 'TRUE', default_assignee: 'kid', points: 3, last_generated_date: '2026-06-28' }],
+      Assignments: [{ assignment_id: 'a1', chore_id: 'c1', person_id: 'kid', due_date: '2026-06-28', status: 'open' }],
+    });
+    ctx.runNightlyGenerator();
+    expect(read('Assignments')).toHaveLength(1); // collapsed
+  });
+
+  it('recreate: prior stays open, a fresh occurrence is created, and the miss is penalized', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 5, 29, 0, 5, 0)); // 2026-06-29
+    const { ctx, read } = loadBackend({
+      People: [{ person_id: 'kid', points_total: 10 }],
+      Chores: [{ chore_id: 'c1', frequency: 'daily', active: 'TRUE', default_assignee: 'kid', points: 3, recur_mode: 'recreate', last_generated_date: '2026-06-28' }],
+      Assignments: [{ assignment_id: 'a1', chore_id: 'c1', person_id: 'kid', due_date: '2026-06-28', status: 'open' }],
+    });
+    ctx.runNightlyGenerator();
+    const rows = read('Assignments');
+    expect(rows).toHaveLength(2); // both the overdue one and today's
+    const a1 = rows.find((r) => r.assignment_id === 'a1');
+    expect(a1.status).toBe('open'); // prior left open (overdue)
+    expect(a1.missed_count).toBe(1); // the missed occurrence is flagged
+    expect(rows.some((r) => r.due_date === '2026-06-29' && r.status === 'open')).toBe(true);
+    expect(read('People')[0].points_total).toBe(7); // 10 − 3, the miss penalty applies
+  });
+
+  it('recreate: only the just-superseded occurrence is penalized, not older open ones', () => {
+    // a1 (06-27) was already penalized on its night; creating 06-29 must penalize
+    // only a2 (06-28), the occurrence that just went overdue — one deduction.
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 5, 29, 0, 5, 0)); // 2026-06-29
+    const { ctx, read } = loadBackend({
+      People: [{ person_id: 'kid', points_total: 10 }],
+      Chores: [{ chore_id: 'c1', frequency: 'daily', active: 'TRUE', default_assignee: 'kid', points: 3, recur_mode: 'recreate', last_generated_date: '2026-06-28' }],
+      Assignments: [
+        { assignment_id: 'a1', chore_id: 'c1', person_id: 'kid', due_date: '2026-06-27', status: 'open', missed_count: 1 },
+        { assignment_id: 'a2', chore_id: 'c1', person_id: 'kid', due_date: '2026-06-28', status: 'open' },
+      ],
+    });
+    ctx.runNightlyGenerator();
+    const rows = read('Assignments');
+    expect(rows).toHaveLength(3);
+    expect(rows.find((r) => r.assignment_id === 'a1').missed_count).toBe(1); // unchanged
+    expect(rows.find((r) => r.assignment_id === 'a2').missed_count).toBe(1); // newly flagged
+    expect(read('People')[0].points_total).toBe(7); // only one deduction (a2)
+  });
+});
+
 describe('runNightlyGenerator — rotation (#24)', () => {
   afterEach(() => vi.useRealTimers());
 

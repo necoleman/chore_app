@@ -59,23 +59,40 @@ function processChoreGeneration(chore, today, allAssignments, people) {
     return null;
   }
 
-  // A prior occurrence is still open → collapse + penalize instead of duplicating.
+  // A prior occurrence is still open when the next one comes due. Either way the
+  // missed occurrence is penalized: its assignee loses the chore's points (once)
+  // and its `missed_count` is bumped (#21). The two modes differ in what happens
+  // to the assignment rows (#30):
+  //   • rollover (default): collapse — no new row is created; the single prior
+  //     assignment carries over as the outstanding overdue item.
+  //   • recreate: the prior stays open (overdue) AND a fresh occurrence is
+  //     stacked on top — e.g. dishes: last night's are still owed, tonight's are
+  //     also due — so we penalize the just-superseded occurrence and fall
+  //     through to create the new row.
+  var recurMode = String(chore.recur_mode || 'rollover');
   var openPrior = mine.find(function(a) { return a.status === 'open' && a.due_date < nextDueISO; });
   if (openPrior) {
-    var points = parseInt(chore.points, 10) || 0;
-    if (points > 0 && openPrior.person_id) {
-      incrementPoints(openPrior.person_id, -points, people);
+    if (recurMode === 'recreate') {
+      // Penalize the occurrence that just went overdue — the LATEST open prior,
+      // so each occurrence is penalized once as it's superseded (older ones were
+      // already penalized on their own night).
+      var superseded = mine
+        .filter(function(a) { return a.status === 'open' && a.due_date < nextDueISO; })
+        .reduce(function(latest, a) {
+          return (!latest || a.due_date > latest.due_date) ? a : latest;
+        }, null);
+      penalizeMissedOccurrence(chore, superseded, people);
+      // fall through — do NOT collapse; create the fresh occurrence below.
+    } else {
+      penalizeMissedOccurrence(chore, openPrior, people);
+      stampLastGenerated(chore, nextDueISO);
+      return null;
     }
-    var missed = (parseInt(openPrior.missed_count, 10) || 0) + 1;
-    updateRow('Assignments', 'assignment_id', openPrior.assignment_id, { missed_count: missed });
-    openPrior.missed_count = missed;
-    stampLastGenerated(chore, nextDueISO);
-    return null;
   }
 
   // Resolve who gets this occurrence — rotating through `default_assignee` when
-  // it holds a comma-delimited list (#24).
-  var assignee = resolveRotationAssignee(chore);
+  // it holds a comma-delimited list (#24), skipping anyone on vacation (#29).
+  var assignee = resolveRotationAssignee(chore, people);
 
   // Fresh occurrence — create the assignment (due_date may be in the future).
   var assignmentId = chore.chore_id + '_' + nextDueISO.replace(/-/g, '');
@@ -121,21 +138,50 @@ function processChoreGeneration(chore, today, allAssignments, people) {
 //     `rotation_last` is empty (first ever) or no longer in the list, we fall
 //     back to the first person in line.
 //
+// Anyone flagged on vacation (#29) is skipped: a sole assignee on vacation makes
+// the chore unclaimed, and a rotation steps past vacationers to the next
+// available person (all on vacation → unclaimed).
+//
 // Rotation state lives in the `rotation_last` column — never read from the
 // previous assignment's person_id — so a manual reassignment doesn't move the
 // order: the next occurrence still goes to whoever would have gotten it.
-function resolveRotationAssignee(chore) {
+function resolveRotationAssignee(chore, people) {
+  var onVacation = {};
+  (people || []).forEach(function(p) {
+    if (p.on_vacation === true || p.on_vacation === 'TRUE') onVacation[p.person_id] = true;
+  });
+
   var list = String(chore.default_assignee || '')
     .split(',')
     .map(function(s) { return s.trim(); })
     .filter(function(s) { return s.length > 0; });
 
   if (list.length === 0) return '';
-  if (list.length === 1) return list[0];
+  if (list.length === 1) return onVacation[list[0]] ? '' : list[0];
 
+  // Walk forward from just after rotation_last (or the start, when the pointer
+  // is empty/dropped), returning the first person who isn't on vacation.
   var idx = list.indexOf(chore.rotation_last);
-  if (idx === -1) return list[0];          // first ever, or dropped from list
-  return list[(idx + 1) % list.length];
+  var start = idx === -1 ? 0 : (idx + 1) % list.length;
+  for (var i = 0; i < list.length; i++) {
+    var cand = list[(start + i) % list.length];
+    if (!onVacation[cand]) return cand;
+  }
+  return ''; // everyone on vacation → unclaimed
+}
+
+// Deduct the chore's points from a missed occurrence's assignee (once, clamped
+// ≥0) and bump its `missed_count`. Shared by the rollover collapse and the
+// recreate stack (#21/#30). No-op for a null occurrence or an unassigned one.
+function penalizeMissedOccurrence(chore, assignment, people) {
+  if (!assignment) return;
+  var points = parseInt(chore.points, 10) || 0;
+  if (points > 0 && assignment.person_id) {
+    incrementPoints(assignment.person_id, -points, people);
+  }
+  var missed = (parseInt(assignment.missed_count, 10) || 0) + 1;
+  updateRow('Assignments', 'assignment_id', assignment.assignment_id, { missed_count: missed });
+  assignment.missed_count = missed;
 }
 
 // Advance the chore's occurrence anchor (idempotent).

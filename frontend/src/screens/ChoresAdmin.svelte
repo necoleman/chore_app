@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte';
-  import { get as apiGet } from '../api/client.js';
+  import { get as apiGet, post } from '../api/client.js';
+  import { showToast } from '../stores/ui.js';
   import ChoreForm from '../components/ChoreForm.svelte';
   import CollapsibleDescription from '../components/CollapsibleDescription.svelte';
   import { today } from '../lib/utils.js';
@@ -109,6 +110,26 @@
   $: noResults =
     searchTerm.trim() !== '' && activeChores.length === 0 && inactiveChores.length === 0;
 
+  // Vacation mode (#29): while a person is away their open assignments go to
+  // unclaimed and their default/rotation chores skip them; toggling off re-homes
+  // their sole-default chores back to them (handled server-side).
+  const isOnVacation = (p) => p.on_vacation === true || p.on_vacation === 'TRUE';
+  let vacationBusy = null; // person_id being toggled
+
+  async function toggleVacation(person) {
+    const next = !isOnVacation(person);
+    vacationBusy = person.person_id;
+    try {
+      await post('set_vacation', { person_id: person.person_id, on_vacation: next });
+      showToast(next ? `${person.name} is on vacation` : `${person.name} is back`, 'success');
+      await load();
+    } catch (e) {
+      showToast(e.message || 'Could not update vacation status');
+    } finally {
+      vacationBusy = null;
+    }
+  }
+
   function openAdd(name = '') {
     addInitialName = name;
     showAddForm = true;
@@ -199,6 +220,29 @@
               {/if}
             </div>
             <button class="edit-btn" on:click={() => (editingChore = chore)}>Edit</button>
+          </div>
+        {/each}
+      </section>
+    {/if}
+
+    {#if !searchTerm.trim() && people.length > 0}
+      <section class="section">
+        <h2 class="section-title">People</h2>
+        {#each people as person (person.person_id)}
+          <div class="person-row">
+            <span class="person-dot" style="background:{person.color || '#9ca3af'}"></span>
+            <span class="person-name">{person.name}</span>
+            {#if isOnVacation(person)}
+              <span class="tag tag--vacation">✈ On vacation</span>
+            {/if}
+            <button
+              class="vacation-btn"
+              class:vacation-btn--on={isOnVacation(person)}
+              disabled={vacationBusy === person.person_id}
+              on:click={() => toggleVacation(person)}
+            >
+              {isOnVacation(person) ? 'End vacation' : 'Set vacation'}
+            </button>
           </div>
         {/each}
       </section>
@@ -323,6 +367,7 @@
   }
 
   .tag--review { background: #fef3c7; color: #92400e; }
+  .tag--vacation { background: #ffedd5; color: #9a3412; }
   .tag--location { background: #e0e7ff; color: #3730a3; }
   .tag--next { background: #ecfeff; color: #0e7490; }
   .tag--last-done { background: #f3f4f6; color: #6b7280; }
@@ -339,6 +384,41 @@
     cursor: pointer;
     color: #374151;
   }
+
+  .person-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #fff;
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 8px;
+  }
+
+  .person-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .person-name { font-size: 15px; font-weight: 600; color: #111827; flex: 1; }
+
+  .vacation-btn {
+    background: none;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    color: #374151;
+    flex-shrink: 0;
+  }
+
+  .vacation-btn--on { border-color: #f97316; color: #9a3412; }
+
+  .vacation-btn:disabled { opacity: 0.5; cursor: default; }
 
   .no-results {
     text-align: center;

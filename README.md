@@ -23,12 +23,12 @@ A lightweight PWA for tracking household chores, backed by Google Sheets and Goo
 
 **People**
 ```
-person_id | name | color | fcm_token | points_total | streak_current | streak_best | is_admin
+person_id | name | color | fcm_token | points_total | streak_current | streak_best | is_admin | on_vacation
 ```
 
 **Chores**
 ```
-chore_id | name | location | description | points | frequency | custom_days | monthly_day | monthly_week | monthly_weekday | interval_days | once_date | start_date | lead_days | last_generated_date | default_assignee | rotation_last | requires_approval | active
+chore_id | name | location | description | points | frequency | custom_days | monthly_day | monthly_week | monthly_weekday | interval_days | once_date | start_date | lead_days | recur_mode | last_generated_date | default_assignee | rotation_last | requires_approval | active
 ```
 
 **Locations** (feeds the location dropdown in the chore editor — one row per allowed location)
@@ -385,6 +385,7 @@ Required columns:
 - `name` — display name
 - `color` — hex color for their avatar, e.g. `#2563eb`
 - `is_admin` — `TRUE` for parents, `FALSE` for kids
+- `on_vacation` — `TRUE` while a person is away (#29). Toggle it from Manage Chores → People ("Set vacation" / "End vacation"). While set, their currently-open assignments are moved to unclaimed and the generator routes their default/rotation chores to unclaimed (rotations skip them). Ending vacation re-homes the chores whose **sole** default assignee is that person back to them. Managed by the app — leave blank otherwise.
 - `points_total`, `streak_current`, `streak_best` — set to `0`
 
 ---
@@ -407,6 +408,7 @@ Optional columns:
 - `start_date` — first date the chore is due (`YYYY-MM-DD`). Blank = starts immediately. The generator won't create assignments before this date. Set it via the chore editor's "First due date" field (e.g. to schedule a monthly/interval chore's first occurrence).
 - `lead_days` — how many days the chore is **visible before it goes overdue**, so its assignment is generated `lead_days − 1` days before the due date. Must be `≥ 1` and **strictly less than the recurrence interval**; **defaults to 1** (appears on its due date — early appearance is opt-in per chore). E.g. a weekly chore due Sunday with `lead_days` 4 appears the previous Thursday (Thu–Sun); daily/once are always 1. Set it via the chore editor's "Days visible before overdue" field; values are clamped to `1…interval−1`.
 - `missed_count` (Assignments) — how many times a still-open assignment has been carried past a recurrence. Instead of piling up duplicate overdue rows, the generator keeps one assignment, bumps `missed_count`, and **deducts the chore's points from the assignee's leaderboard total once per missed recurrence** (clamped at 0). Days overdue is shown from `due_date` (not stored).
+- `recur_mode` — how an **unfinished** recurring chore behaves when its next occurrence comes due (#30). Both modes penalize the missed occurrence: the assignee loses the chore's points (once) and `missed_count` is bumped. They differ in the assignment rows: `rollover` (default, and the behavior for blank) keeps a single assignment — the prior one is carried over as the outstanding overdue item, no new row. `recreate` leaves the prior assignment open (overdue) **and** creates a fresh assignment on top — for chores that compound (e.g. dishes: last night's are still owed, and tonight's are due too); each occurrence is penalized once as it's superseded. Set it via the chore editor's "If not done when it recurs" field.
 - `default_assignee` — the `person_id` this chore is normally assigned to (blank = unclaimed/claimable). It can also be a **comma-delimited list** to **rotate between people** (e.g. `p_sam,p_alex,p_jo`): each new occurrence goes to the next person in the list, wrapping around. Rotation state is tracked in `rotation_last` (below), so a manual reassignment of one occurrence does **not** shift the order — the next occurrence still goes to whoever was next in line. If the last-planned person is dropped from the list, rotation resets to the first. In the in-app editor the assignee field currently sets a single person; build multi-person rotations by editing the comma list in the sheet. Manage Chores shows a rotation as "A → B → C".
 - `rotation_last` — internal bookkeeping for the rotation above: the `person_id` the generator *planned* to assign most recently (not necessarily who did it). Leave blank; the generator manages it. Not surfaced in the editor.
 

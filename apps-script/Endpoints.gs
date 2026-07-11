@@ -277,8 +277,10 @@ function actionReject(body) {
   //   (b) a newer done/pending occurrence is left alone — the work is done.
   // Scoped to daily chores (per the enhancement); other frequencies rely on the
   // lead-window collapse in the generator and are left untouched.
+  // ...except "recreate" daily chores (#30), which legitimately keep multiple
+  // open occurrences (they stack), so we must NOT delete the newer ones.
   var chore = getRows('Chores').find(function(c) { return c.chore_id === assignment.chore_id; });
-  if (chore && chore.frequency === 'daily') {
+  if (chore && chore.frequency === 'daily' && String(chore.recur_mode || 'rollover') !== 'recreate') {
     getRows('Assignments').forEach(function(a) {
       if (a.chore_id !== assignment.chore_id) return;
       if (a.due_date <= assignment.due_date) return;      // only NEWER occurrences
@@ -440,6 +442,7 @@ function actionAddChore(body) {
     once_date: body.once_date || '',
     start_date: body.start_date || '',
     lead_days: (body.lead_days === 0 || body.lead_days) ? body.lead_days : '',
+    recur_mode: body.recur_mode || 'rollover',
     last_generated_date: '',
     default_assignee: body.default_assignee || '',
     requires_approval: body.requires_approval === true || body.requires_approval === 'true' ? true : false,
@@ -467,7 +470,7 @@ function actionUpdateChore(body) {
   var updates = {};
   var allowed = ['name', 'location', 'description', 'points', 'frequency', 'custom_days',
                  'monthly_day', 'monthly_week', 'monthly_weekday', 'interval_days', 'once_date',
-                 'start_date', 'lead_days', 'default_assignee', 'requires_approval', 'active'];
+                 'start_date', 'lead_days', 'recur_mode', 'default_assignee', 'requires_approval', 'active'];
   allowed.forEach(function(field) {
     if (body.hasOwnProperty(field)) updates[field] = body[field];
   });
@@ -522,6 +525,52 @@ function actionRegisterToken(body) {
 
   invalidateCache('People');
   return { success: true, token_length: String(fcmToken).length };
+}
+
+// ─── POST: set_vacation (admin toggles a person on/off vacation, #29) ──────────
+//
+// Turning vacation ON: flag the person and move all of their currently OPEN
+// assignments to unclaimed (person_id=''), so no one is stuck waiting on someone
+// who's away. Pending/done/skipped work is left alone. The generator separately
+// routes their default/rotation chores to unclaimed while the flag is set.
+//
+// Turning vacation OFF: clear the flag and immediately re-home the assignments
+// that belong to them — every currently-unclaimed OPEN assignment whose chore's
+// SOLE default assignee is this person goes back to them. Shared/rotating chores
+// stay unclaimed (the rotation picks them up again on the next occurrence). This
+// is a targeted re-home, not a full generation run, so nothing is pulled forward.
+function actionSetVacation(body) {
+  var personId = body.person_id;
+  if (!personId) throw new Error('person_id required');
+  var onVacation = body.on_vacation === true || body.on_vacation === 'true' || body.on_vacation === 'TRUE';
+
+  var found = updateRow('People', 'person_id', personId, { on_vacation: onVacation });
+  if (!found) throw new Error('No People row for person_id: ' + personId);
+  invalidateCache('People');
+
+  if (onVacation) {
+    getRows('Assignments').forEach(function(a) {
+      if (a.person_id === personId && a.status === 'open') {
+        updateRow('Assignments', 'assignment_id', a.assignment_id, { person_id: '' });
+      }
+    });
+  } else {
+    // Chores whose only default assignee is this person.
+    var soleDefault = {};
+    getRows('Chores').forEach(function(c) {
+      var list = String(c.default_assignee || '')
+        .split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+      if (list.length === 1 && list[0] === personId) soleDefault[c.chore_id] = true;
+    });
+    getRows('Assignments').forEach(function(a) {
+      if (!a.person_id && a.status === 'open' && soleDefault[a.chore_id]) {
+        updateRow('Assignments', 'assignment_id', a.assignment_id, { person_id: personId });
+      }
+    });
+  }
+
+  invalidateCache('Assignments');
+  return { success: true, on_vacation: onVacation };
 }
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
