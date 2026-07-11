@@ -84,7 +84,7 @@ export function splitTodaySections(assignments, currentUser, isAdmin, todayStr, 
   );
   const familyByPerson = familyAssignments.reduce((acc, a) => {
     const key = a.person_id;
-    if (!acc[key]) acc[key] = { name: a.person_name, color: a.person_color, items: [] };
+    if (!acc[key]) acc[key] = { person_id: key, name: a.person_name, color: a.person_color, items: [] };
     acc[key].items.push(a);
     return acc;
   }, {});

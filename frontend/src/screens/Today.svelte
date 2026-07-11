@@ -8,6 +8,7 @@
   import NeedsReviewSection from '../components/NeedsReviewSection.svelte';
   import { relativeTime, today } from '../lib/utils.js';
   import { splitTodaySections } from '../lib/choreSelectors.js';
+  import { loadOpen, saveOpen } from '../lib/persistOpen.js';
 
   $: isAdmin = $currentUser?.is_admin;
   $: todayStr = today();
@@ -24,6 +25,10 @@
   $: unassigned = sections.unassigned;
 
   let showQuickAdd = false;
+
+  // Remember whether the Family dropdown was left open (#28 follow-up).
+  let familyOpen = loadOpen('family', false);
+  $: saveOpen('family', familyOpen);
 
   onMount(() => startPolling());
   onDestroy(() => stopPolling());
@@ -69,7 +74,7 @@
     {#if myAssignments.length === 0}
       <p class="empty">All done! 🎉</p>
     {:else}
-      <AssignmentSegments items={myAssignments} {todayStr} showAdminControls={isAdmin} />
+      <AssignmentSegments items={myAssignments} {todayStr} showAdminControls={isAdmin} storeKey="mine" />
     {/if}
   </section>
 
@@ -77,7 +82,7 @@
        each user sees only their own + unclaimed chores at a glance. -->
   {#if familyGroups.length > 0}
     <section class="section">
-      <details class="family-details">
+      <details class="family-details" bind:open={familyOpen}>
         <summary class="family-summary">
           <span class="section-title family-heading">Family</span>
           <span class="family-count">{familyCount} {familyCount === 1 ? 'chore' : 'chores'}</span>
@@ -85,7 +90,7 @@
         {#each familyGroups as group}
           <div class="family-group">
             <span class="family-name">{group.name}</span>
-            <AssignmentSegments items={group.items} {todayStr} showAdminControls={isAdmin} readonly={true} />
+            <AssignmentSegments items={group.items} {todayStr} showAdminControls={isAdmin} readonly={true} storeKey={`fam:${group.person_id}`} />
           </div>
         {/each}
       </details>

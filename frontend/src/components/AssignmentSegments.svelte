@@ -4,15 +4,21 @@
   // falls in one bucket the labels are hidden and the cards render plainly.
   import ChoreCard from './ChoreCard.svelte';
   import { partitionByDue } from '../lib/choreSelectors.js';
+  import { loadOpen, saveOpen } from '../lib/persistOpen.js';
 
   export let items = [];
   export let todayStr;
   export let showAdminControls = false;
   export let readonly = false;
+  // Stable id so the "Due soon" fold remembers its open/closed state per person.
+  export let storeKey;
 
   $: ({ today, soon } = partitionByDue(items, todayStr));
   // Only label the "Today" group when there's also a "Due soon" group to distinguish it.
   $: showTodayLabel = today.length > 0 && soon.length > 0;
+
+  let soonOpen = loadOpen(`soon:${storeKey}`, false);
+  $: saveOpen(`soon:${storeKey}`, soonOpen);
 </script>
 
 {#if showTodayLabel}
@@ -23,7 +29,7 @@
 {/each}
 
 {#if soon.length > 0}
-  <details class="soon-details">
+  <details class="soon-details" bind:open={soonOpen}>
     <summary class="soon-summary">
       <span class="seg-label soon-heading">Due soon</span>
       <span class="soon-count">{soon.length}</span>
@@ -36,13 +42,11 @@
 
 <style>
   .seg-label {
-    font-size: 11px;
+    font-size: 15px;
     font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: #9ca3af;
+    color: #4b5563;
     display: block;
-    padding: 4px 0;
+    padding: 6px 0 6px 12px;
   }
 
   .soon-details {
@@ -55,7 +59,7 @@
     gap: 8px;
     cursor: pointer;
     list-style: none;
-    padding: 4px 0;
+    padding: 4px 0 4px 12px;
     user-select: none;
   }
 
@@ -68,8 +72,8 @@
     content: '';
     width: 6px;
     height: 6px;
-    border-right: 2px solid #9ca3af;
-    border-bottom: 2px solid #9ca3af;
+    border-right: 2px solid #6b7280;
+    border-bottom: 2px solid #6b7280;
     transform: rotate(-45deg);
     transition: transform 0.15s ease;
     flex: none;
@@ -84,7 +88,7 @@
   }
 
   .soon-count {
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 600;
     color: #9ca3af;
   }
