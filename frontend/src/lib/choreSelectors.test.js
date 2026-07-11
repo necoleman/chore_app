@@ -3,6 +3,7 @@ import {
   filterTodayAssignments,
   rankAssignment,
   splitTodaySections,
+  partitionByDue,
   choreState,
   reviewerName,
 } from './choreSelectors.js';
@@ -152,6 +153,38 @@ describe('splitTodaySections', () => {
     ];
     const { mine } = splitTodaySections(list, me, true, TODAY, 'frequency');
     expect(mine.map((x) => x.assignment_id)).toEqual(['mine-daily', 'mine-monthly', 'mine-done']);
+  });
+});
+
+describe('partitionByDue (#28)', () => {
+  it('puts overdue and due-today in today, future in soon', () => {
+    const list = [
+      a({ assignment_id: 'overdue', due_date: '2026-06-25', status: 'open' }),
+      a({ assignment_id: 'today', due_date: TODAY, status: 'open' }),
+      a({ assignment_id: 'future', due_date: '2026-07-01', status: 'open' }),
+    ];
+    const { today, soon } = partitionByDue(list, TODAY);
+    expect(today.map((x) => x.assignment_id)).toEqual(['overdue', 'today']);
+    expect(soon.map((x) => x.assignment_id)).toEqual(['future']);
+  });
+
+  it('keeps finished items in today even if their due date is future', () => {
+    const list = [
+      a({ assignment_id: 'done-future', due_date: '2026-07-01', status: 'done' }),
+      a({ assignment_id: 'skip-future', due_date: '2026-07-01', status: 'skipped' }),
+    ];
+    const { today, soon } = partitionByDue(list, TODAY);
+    expect(today.map((x) => x.assignment_id)).toEqual(['done-future', 'skip-future']);
+    expect(soon).toEqual([]);
+  });
+
+  it('preserves input order within each bucket and tolerates empty input', () => {
+    const list = [
+      a({ assignment_id: 's1', due_date: '2026-07-02', status: 'open' }),
+      a({ assignment_id: 's2', due_date: '2026-07-01', status: 'open' }),
+    ];
+    expect(partitionByDue(list, TODAY).soon.map((x) => x.assignment_id)).toEqual(['s1', 's2']);
+    expect(partitionByDue(undefined, TODAY)).toEqual({ today: [], soon: [] });
   });
 });
 

@@ -50,6 +50,22 @@ export function makeSectionComparator(sortMode, todayStr) {
   return (x, y) => byRank(x, y) || byDue(x, y);
 }
 
+// Segment an already-sorted assignment list into "Today" (overdue or due today)
+// and "Due soon" (not yet due) buckets (#28). A card is "due soon" only when it
+// is unfinished and its due date is still in the future; overdue, due-today, and
+// finished-today items all stay in "today". Order within each bucket is preserved
+// from the input, so every sort mode keeps working.
+export function partitionByDue(items, todayStr) {
+  const today = [];
+  const soon = [];
+  for (const a of items ?? []) {
+    const finished = a.status === 'done' || a.status === 'skipped';
+    const future = !finished && a.due_date?.slice(0, 10) > todayStr;
+    (future ? soon : today).push(a);
+  }
+  return { today, soon };
+}
+
 // Split today's assignments into the Today screen's sections.
 export function splitTodaySections(assignments, currentUser, isAdmin, todayStr, sortMode = 'default') {
   const todays = filterTodayAssignments(assignments, todayStr);

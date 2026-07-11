@@ -3,6 +3,7 @@
   import { assignments, people, isRefreshing, lastUpdated, startPolling, stopPolling, quickAddChore } from '../stores/data.js';
   import { currentUser } from '../stores/user.js';
   import ChoreCard from '../components/ChoreCard.svelte';
+  import AssignmentSegments from '../components/AssignmentSegments.svelte';
   import QuickAddChore from '../components/QuickAddChore.svelte';
   import NeedsReviewSection from '../components/NeedsReviewSection.svelte';
   import { relativeTime, today } from '../lib/utils.js';
@@ -68,9 +69,7 @@
     {#if myAssignments.length === 0}
       <p class="empty">All done! 🎉</p>
     {:else}
-      {#each myAssignments as a (a.assignment_id)}
-        <ChoreCard assignment={a} showAdminControls={isAdmin} />
-      {/each}
+      <AssignmentSegments items={myAssignments} {todayStr} showAdminControls={isAdmin} />
     {/if}
   </section>
 
@@ -86,9 +85,7 @@
         {#each familyGroups as group}
           <div class="family-group">
             <span class="family-name">{group.name}</span>
-            {#each group.items as a (a.assignment_id)}
-              <ChoreCard assignment={a} showAdminControls={isAdmin} readonly={true} />
-            {/each}
+            <AssignmentSegments items={group.items} {todayStr} showAdminControls={isAdmin} readonly={true} />
           </div>
         {/each}
       </details>
