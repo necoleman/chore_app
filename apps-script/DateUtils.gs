@@ -32,6 +32,17 @@ function usesNthWeekday(chore) {
          chore.monthly_weekday !== '' && chore.monthly_weekday != null;
 }
 
+// True when a stored timestamp (ISO datetime, UTC or with an offset) falls on
+// `todayISO` in the script timezone. Parses the instant and reformats it locally
+// so both legacy UTC `completed_at` values (written before the #31 fix) and new
+// local-offset ones resolve to the correct local day. Empty/invalid → false.
+function completedOnLocalDate(timestamp, todayISO) {
+  if (!timestamp) return false;
+  var d = new Date(timestamp);
+  if (isNaN(d.getTime())) return false;
+  return formatDate(d) === todayISO;
+}
+
 // ─── Lead-time / next-occurrence scheduling (v1.3.0, #21 + #23) ───────────────
 
 /** Parse a `yyyy-MM-dd` (or ISO) string into a local Date at midnight. */

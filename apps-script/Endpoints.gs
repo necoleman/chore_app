@@ -24,9 +24,11 @@ function actionToday(params) {
     if (a.status === 'skipped' || a.status === 'done') {
       if (a.due_date === today) return true;
       // A chore COMPLETED today stays on Today (greyed, at the bottom) for the
-      // rest of the day even if it was overdue when checked off (#14).
-      return a.status === 'done' && a.completed_at &&
-             String(a.completed_at).slice(0, 10) === today;
+      // rest of the day even if it was overdue when checked off (#14). Compare
+      // the completion INSTANT converted to the script timezone — not a raw
+      // string slice — so legacy UTC timestamps (written before the #31 fix)
+      // and new local-offset ones both resolve to the correct local day.
+      return a.status === 'done' && completedOnLocalDate(a.completed_at, today);
     }
     return true;
   });

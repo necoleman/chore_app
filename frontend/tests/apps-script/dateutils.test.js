@@ -11,6 +11,28 @@ describe('date helpers', () => {
   });
 });
 
+describe('completedOnLocalDate (#31/#32)', () => {
+  const { ctx } = loadBackend();
+  // 09:00Z / 23:00Z land on an unambiguous calendar day across realistic host
+  // timezones (the harness formatDate uses host-local, mirroring script-tz in prod).
+  it('matches a timestamp completed on the given day', () => {
+    expect(ctx.completedOnLocalDate('2026-06-28T09:00:00Z', '2026-06-28')).toBe(true);
+  });
+  it('rejects a timestamp from a different day (including legacy UTC values)', () => {
+    expect(ctx.completedOnLocalDate('2026-06-27T09:00:00Z', '2026-06-28')).toBe(false);
+    expect(ctx.completedOnLocalDate('2026-06-29T09:00:00Z', '2026-06-28')).toBe(false);
+  });
+  it('is compared as an instant, so a local-offset timestamp resolves correctly', () => {
+    // 09:00 at -05:00 == 14:00Z, still 2026-06-28 in any realistic host tz.
+    expect(ctx.completedOnLocalDate('2026-06-28T09:00:00-05:00', '2026-06-28')).toBe(true);
+  });
+  it('empty or invalid → false', () => {
+    expect(ctx.completedOnLocalDate('', '2026-06-28')).toBe(false);
+    expect(ctx.completedOnLocalDate(null, '2026-06-28')).toBe(false);
+    expect(ctx.completedOnLocalDate('not-a-date', '2026-06-28')).toBe(false);
+  });
+});
+
 describe('effectiveLeadDays (#23)', () => {
   const { ctx } = loadBackend();
   it('defaults to 1 for every frequency when unset', () => {
