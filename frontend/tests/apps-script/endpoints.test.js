@@ -117,6 +117,25 @@ describe('actionComplete', () => {
     });
     expect(() => ctx.actionComplete({ assignment_id: 'a1', person_id: 'kid' })).toThrow(/not open/);
   });
+
+  // #31/#32: completed_at must carry the script-LOCAL date, not a UTC one, so the
+  // Today filter's "completed today" test (completed_at.slice(0,10) === today)
+  // matches on the day of completion instead of lingering an extra day.
+  it('stamps completed_at with the local date (nowIso is not UTC)', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 5, 28, 21, 30, 0)); // evening
+    try {
+      const { ctx, read } = loadBackend({
+        People: [{ person_id: 'kid', is_admin: 'FALSE', points_total: 0 }],
+        Chores: [{ chore_id: 'c1', requires_approval: 'FALSE', points: 1 }],
+        Assignments: [{ assignment_id: 'a1', chore_id: 'c1', person_id: 'kid', status: 'open' }],
+      });
+      ctx.actionComplete({ assignment_id: 'a1', person_id: 'kid' });
+      expect(read('Assignments')[0].completed_at.slice(0, 10)).toBe(ctx.todayStr());
+      expect(ctx.nowIso().slice(0, 10)).toBe(ctx.todayStr());
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe('actionApprove / actionReject', () => {
@@ -429,5 +448,48 @@ describe('actionSetVacation (#29)', () => {
     const { ctx } = loadBackend({ People: [{ person_id: 'kid' }] });
     expect(() => ctx.actionSetVacation({ person_id: 'ghost', on_vacation: true })).toThrow(/No People row/);
     expect(() => ctx.actionSetVacation({ on_vacation: true })).toThrow(/required/);
+  });
+});
+
+describe('actionResetRotation (#33)', () => {
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 5, 28, 12, 0, 0)); }); // 2026-06-28
+  afterEach(() => vi.useRealTimers());
+
+  it('reassigns current (open, not-overdue) assignments to the first person and resets the pointer', () => {
+    const { ctx, read } = loadBackend({
+      People: [{ person_id: 'p_a' }, { person_id: 'p_b' }, { person_id: 'p_c' }],
+      Chores: [{ chore_id: 'c1', name: 'Trash', default_assignee: 'p_a,p_b,p_c', rotation_last: 'p_b' }],
+      Assignments: [
+        { assignment_id: 'cur', chore_id: 'c1', person_id: 'p_c', status: 'open', due_date: '2026-06-30' }, // future → current
+        { assignment_id: 'today', chore_id: 'c1', person_id: 'p_c', status: 'open', due_date: '2026-06-28' }, // today → current
+      ],
+    });
+    const res = ctx.actionResetRotation({ chore_id: 'c1' });
+    expect(res.first_person).toBe('p_a');
+    const rows = read('Assignments');
+    expect(rows.find((a) => a.assignment_id === 'cur').person_id).toBe('p_a');
+    expect(rows.find((a) => a.assignment_id === 'today').person_id).toBe('p_a');
+    expect(read('Chores')[0].rotation_last).toBe('p_a'); // next occurrence → p_b
+  });
+
+  it('leaves overdue open assignments untouched', () => {
+    const { ctx, read } = loadBackend({
+      People: [{ person_id: 'p_a' }, { person_id: 'p_b' }],
+      Chores: [{ chore_id: 'c1', default_assignee: 'p_a,p_b', rotation_last: 'p_a' }],
+      Assignments: [
+        { assignment_id: 'overdue', chore_id: 'c1', person_id: 'p_b', status: 'open', due_date: '2026-06-25' },
+      ],
+    });
+    ctx.actionResetRotation({ chore_id: 'c1' });
+    expect(read('Assignments')[0].person_id).toBe('p_b'); // overdue untouched
+  });
+
+  it('throws for a non-rotation chore and requires chore_id', () => {
+    const { ctx } = loadBackend({
+      Chores: [{ chore_id: 'c1', default_assignee: 'p_a' }],
+    });
+    expect(() => ctx.actionResetRotation({ chore_id: 'c1' })).toThrow(/not a rotation/);
+    expect(() => ctx.actionResetRotation({ chore_id: 'ghost' })).toThrow(/No Chores row/);
+    expect(() => ctx.actionResetRotation({})).toThrow(/required/);
   });
 });

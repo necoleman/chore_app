@@ -95,7 +95,7 @@
       {#if isOverdue}
         <span class="overdue-tag">Overdue {daysOverdue(assignment.due_date, today())}d</span>
       {/if}
-      {#if assignment.missed_count}
+      {#if assignment.missed_count && !isDone && !isSkipped}
         <span class="missed-tag">missed {assignment.missed_count}×</span>
       {/if}
     </div>

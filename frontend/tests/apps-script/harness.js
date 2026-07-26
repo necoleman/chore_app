@@ -114,8 +114,18 @@ export function loadBackend(initial = {}) {
       formatDate(date, _tz, pattern) {
         const y = date.getFullYear();
         const parts = `${y}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-        if (pattern === "yyyy-MM-dd'T'HH:mm:ss") {
-          return `${parts}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+        if (pattern && pattern.startsWith("yyyy-MM-dd'T'HH:mm:ss")) {
+          const time = `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+          // `XXX` = ISO timezone offset (e.g. -05:00). We render the host-local
+          // offset, consistent with the mock treating dates as host-local above.
+          let suffix = '';
+          if (pattern.endsWith('XXX')) {
+            const off = -date.getTimezoneOffset(); // minutes east of UTC
+            const sign = off >= 0 ? '+' : '-';
+            const abs = Math.abs(off);
+            suffix = `${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`;
+          }
+          return `${parts}T${time}${suffix}`;
         }
         return parts;
       },

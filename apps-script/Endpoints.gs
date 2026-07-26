@@ -573,6 +573,39 @@ function actionSetVacation(body) {
   return { success: true, on_vacation: onVacation };
 }
 
+// ─── POST: reset_rotation (admin resets a rotating chore to the top, #33) ───────
+//
+// Reset a rotating chore (`default_assignee` = comma-list of 2+ person_ids) back
+// to the first person in the list: reassign every CURRENT (open, not-overdue)
+// assignment of the chore to list[0], and set the rotation pointer to list[0] so
+// the *next* generated occurrence goes to list[1] (a clean restart). Overdue open
+// assignments (due_date < today) are deliberately left untouched.
+function actionResetRotation(body) {
+  var choreId = body.chore_id;
+  if (!choreId) throw new Error('chore_id required');
+
+  var chore = getRows('Chores').find(function(c) { return c.chore_id === choreId; });
+  if (!chore) throw new Error('No Chores row for chore_id: ' + choreId);
+
+  var list = String(chore.default_assignee || '')
+    .split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+  if (list.length < 2) throw new Error('Chore is not a rotation: ' + choreId);
+
+  var firstPerson = list[0];
+  var today = todayStr();
+
+  getRows('Assignments').forEach(function(a) {
+    if (a.chore_id === choreId && a.status === 'open' && a.due_date >= today) {
+      updateRow('Assignments', 'assignment_id', a.assignment_id, { person_id: firstPerson });
+    }
+  });
+  updateRow('Chores', 'chore_id', choreId, { rotation_last: firstPerson });
+
+  invalidateCache('Assignments');
+  invalidateCache('Chores');
+  return { success: true, first_person: firstPerson };
+}
+
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
 function incrementPoints(personId, points, people) {

@@ -125,10 +125,15 @@ function formatDate(date) {
 }
 
 /**
- * Formats any Date as full ISO datetime string.
+ * Current timestamp as an ISO datetime string in the SCRIPT timezone (not UTC),
+ * so its date portion (slice(0,10)) matches todayStr()/formatDate(). This is what
+ * `completed_at`/`reviewed_at` are stored with; the Today filter compares that
+ * date portion against a local "today". Using UTC here caused evening
+ * completions in behind-UTC timezones to read as "completed tomorrow", leaving
+ * done cards on Today an extra day (issues #31/#32).
  */
 function nowIso() {
-  return new Date().toISOString();
+  return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH:mm:ssXXX");
 }
 
 /**

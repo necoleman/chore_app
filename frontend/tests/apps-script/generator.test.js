@@ -100,6 +100,71 @@ describe('resolveRotationAssignee — vacation skip (#29)', () => {
     expect(r({ default_assignee: 'p_a,p_b,p_c', rotation_last: 'p_a' })).toBe('p_b'));
 });
 
+describe('runNightlyGenerator — vacation pause (#34)', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('sole assignee on vacation: does not create a row, penalize, or inflate missed_count', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 5, 29, 0, 5, 0)); // 2026-06-29
+    const { ctx, read } = loadBackend({
+      People: [{ person_id: 'kid', points_total: 10, on_vacation: true }],
+      Chores: [{ chore_id: 'c1', frequency: 'daily', active: 'TRUE', default_assignee: 'kid', points: 3, last_generated_date: '2026-06-28' }],
+      Assignments: [{ assignment_id: 'a1', chore_id: 'c1', person_id: '', due_date: '2026-06-28', status: 'open' }], // moved to unclaimed by set_vacation ON
+    });
+    ctx.runNightlyGenerator();
+    const rows = read('Assignments');
+    expect(rows).toHaveLength(1); // no new mid-vacation row
+    expect(rows[0].assignment_id).toBe('a1');
+    expect(rows[0].due_date).toBe('2026-06-28'); // pre-vacation date, untouched
+    expect(rows[0].missed_count || 0).toBe(0); // not inflated
+    expect(read('People')[0].points_total).toBe(10); // no penalty
+    expect(read('Chores')[0].last_generated_date).toBe('2026-06-29'); // anchor still advances
+  });
+
+  it('does not inflate missed_count across multiple vacation days', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 5, 29, 0, 5, 0));
+    const { ctx, read } = loadBackend({
+      People: [{ person_id: 'kid', points_total: 10, on_vacation: true }],
+      Chores: [{ chore_id: 'c1', frequency: 'daily', active: 'TRUE', default_assignee: 'kid', points: 3, last_generated_date: '2026-06-28' }],
+      Assignments: [{ assignment_id: 'a1', chore_id: 'c1', person_id: '', due_date: '2026-06-28', status: 'open' }],
+    });
+    ctx.runNightlyGenerator();                                  // 06-29
+    vi.setSystemTime(new Date(2026, 5, 30, 0, 5, 0)); ctx.runNightlyGenerator(); // 06-30
+    vi.setSystemTime(new Date(2026, 6, 1, 0, 5, 0)); ctx.runNightlyGenerator();  // 07-01
+    const rows = read('Assignments');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].missed_count || 0).toBe(0);
+    expect(read('People')[0].points_total).toBe(10);
+  });
+
+  it('genuinely unclaimed chore (no default_assignee) still generates to the pool', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 5, 29, 0, 5, 0));
+    const { ctx, read } = loadBackend({
+      People: [{ person_id: 'kid', points_total: 10, on_vacation: true }],
+      Chores: [{ chore_id: 'c1', frequency: 'daily', active: 'TRUE', last_generated_date: '2026-06-28' }],
+    });
+    ctx.runNightlyGenerator();
+    const rows = read('Assignments');
+    expect(rows).toHaveLength(1); // not paused — no default assignee
+    expect(rows[0].person_id).toBe('');
+    expect(rows[0].due_date).toBe('2026-06-29');
+  });
+
+  it('rotation with some members available is not paused', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 5, 29, 0, 5, 0));
+    const { ctx, read } = loadBackend({
+      People: [
+        { person_id: 'p_a', points_total: 0, on_vacation: true },
+        { person_id: 'p_b', points_total: 0 },
+      ],
+      Chores: [{ chore_id: 'c1', frequency: 'daily', active: 'TRUE', default_assignee: 'p_a,p_b', rotation_last: 'p_a', last_generated_date: '2026-06-28' }],
+    });
+    ctx.runNightlyGenerator();
+    const rows = read('Assignments');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].person_id).toBe('p_b'); // rotation stepped past the vacationer
+  });
+});
+
 describe('runNightlyGenerator — recreate vs rollover (#30)', () => {
   afterEach(() => vi.useRealTimers());
 

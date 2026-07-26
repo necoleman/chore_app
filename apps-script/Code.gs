@@ -70,6 +70,7 @@ function dispatchPost(action, body) {
     case 'update_chore':   return actionUpdateChore(body);
     case 'register_token': return actionRegisterToken(body);
     case 'set_vacation':   return actionSetVacation(body);
+    case 'reset_rotation': return actionResetRotation(body);
     default:               throw new Error('Unknown action: ' + action);
   }
 }

@@ -59,6 +59,22 @@ function processChoreGeneration(chore, today, allAssignments, people) {
     return null;
   }
 
+  // Resolve who gets this occurrence — rotating through `default_assignee` when
+  // it holds a comma-delimited list (#24), skipping anyone on vacation (#29).
+  var assignee = resolveRotationAssignee(chore, people);
+
+  // Vacation pause (#34): a chore with default assignee(s) whose candidates are
+  // ALL on vacation resolves to '' here. Don't create a mid-vacation row and
+  // don't penalize/inflate missed_count — just consume the occurrence (advance
+  // the anchor so dates don't pile up as past-dated rows on return). Genuinely
+  // unclaimed chores (no default_assignee) fall through and generate as normal.
+  var hasAssignees = String(chore.default_assignee || '')
+    .split(',').map(function(s) { return s.trim(); }).filter(Boolean).length > 0;
+  if (hasAssignees && assignee === '') {
+    stampLastGenerated(chore, nextDueISO);
+    return null;
+  }
+
   // A prior occurrence is still open when the next one comes due. Either way the
   // missed occurrence is penalized: its assignee loses the chore's points (once)
   // and its `missed_count` is bumped (#21). The two modes differ in what happens
@@ -89,10 +105,6 @@ function processChoreGeneration(chore, today, allAssignments, people) {
       return null;
     }
   }
-
-  // Resolve who gets this occurrence — rotating through `default_assignee` when
-  // it holds a comma-delimited list (#24), skipping anyone on vacation (#29).
-  var assignee = resolveRotationAssignee(chore, people);
 
   // Fresh occurrence — create the assignment (due_date may be in the future).
   var assignmentId = chore.chore_id + '_' + nextDueISO.replace(/-/g, '');

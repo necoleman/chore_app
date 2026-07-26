@@ -130,6 +130,25 @@
     }
   }
 
+  // Rotation reset (#33): a rotating chore (comma-list default_assignee) can be
+  // reset to the top — its current (open, not-overdue) assignments go back to the
+  // first person, and the next occurrence restarts the sequence. Handled server-side.
+  const isRotation = (c) => String(c.default_assignee || '').includes(',');
+  let resetBusy = null; // chore_id being reset
+
+  async function resetRotation(chore) {
+    resetBusy = chore.chore_id;
+    try {
+      await post('reset_rotation', { chore_id: chore.chore_id });
+      showToast(`${chore.name} rotation reset`, 'success');
+      await load();
+    } catch (e) {
+      showToast(e.message || 'Could not reset rotation');
+    } finally {
+      resetBusy = null;
+    }
+  }
+
   function openAdd(name = '') {
     addInitialName = name;
     showAddForm = true;
@@ -200,7 +219,16 @@
               </div>
               <CollapsibleDescription text={chore.description} />
             </div>
-            <button class="edit-btn" on:click={() => (editingChore = chore)}>Edit</button>
+            <div class="chore-actions">
+              {#if isRotation(chore)}
+                <button
+                  class="reset-rotation-btn"
+                  disabled={resetBusy === chore.chore_id}
+                  on:click={() => resetRotation(chore)}
+                >Reset rotation</button>
+              {/if}
+              <button class="edit-btn" on:click={() => (editingChore = chore)}>Edit</button>
+            </div>
           </div>
         {/each}
       </section>
@@ -374,6 +402,8 @@
   .tag--assignee { background: #dcfce7; color: #166534; }
   .tag--unclaimed { background: #f3f4f6; color: #6b7280; font-style: italic; }
 
+  .chore-actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+
   .edit-btn {
     background: none;
     border: 1px solid #d1d5db;
@@ -384,6 +414,20 @@
     cursor: pointer;
     color: #374151;
   }
+
+  .reset-rotation-btn {
+    background: none;
+    border: 1px solid #c7d2fe;
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    color: #3730a3;
+    white-space: nowrap;
+  }
+
+  .reset-rotation-btn:disabled { opacity: 0.5; cursor: default; }
 
   .person-row {
     display: flex;
