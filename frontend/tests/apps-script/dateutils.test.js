@@ -101,3 +101,74 @@ describe('nextDueForChore (#21/#23 anchor)', () => {
     expect(nd({ frequency: 'weekly', custom_days: '2', start_date: '2026-08-01' }, TODAY)).toBe('2026-08-04');
   });
 });
+
+describe('nextDueForChore never schedules into the past', () => {
+  const { ctx } = loadBackend();
+  const nd = (chore, date) => ctx.formatDate(ctx.nextDueForChore(chore, date));
+  const TODAY = new Date(2026, 7, 10); // Monday 2026-08-10
+
+  // `last_generated_date` freezes while a chore is inactive and lags after a
+  // missed nightly run. The occurrence "after" a stale cursor is itself in the
+  // past, and used to be written straight into due_date — born overdue.
+  it('daily: a months-stale cursor resolves to today, not cursor+1', () => {
+    expect(nd({ frequency: 'daily', last_generated_date: '2026-02-01' }, TODAY)).toBe('2026-08-10');
+  });
+
+  it('weekly: skips to the next scheduled weekday on/after today', () => {
+    // Sundays. Cursor stranded in June → next Sunday from today, not 2026-06-07.
+    expect(nd({ frequency: 'weekly', custom_days: '0', last_generated_date: '2026-06-01' }, TODAY))
+      .toBe('2026-08-16');
+  });
+
+  it('custom: honours the weekday set rather than snapping to today', () => {
+    // Mon/Wed/Fri — today IS a Monday, so today itself qualifies.
+    expect(nd({ frequency: 'custom', custom_days: 'monday,wednesday,friday',
+                last_generated_date: '2026-05-15' }, TODAY)).toBe('2026-08-10');
+    // Tue/Thu — the next qualifying day after today.
+    expect(nd({ frequency: 'custom', custom_days: 'tuesday,thursday',
+                last_generated_date: '2026-05-15' }, TODAY)).toBe('2026-08-11');
+  });
+
+  it('monthly: lands on the next occurrence of the day-of-month', () => {
+    expect(nd({ frequency: 'monthly', monthly_day: '15', last_generated_date: '2026-03-15' }, TODAY))
+      .toBe('2026-08-15');
+  });
+
+  it('interval: rolls forward by whole intervals, preserving cadence phase', () => {
+    // 2026-06-01 + 7n — the first such date on/after 2026-08-10 is 08-10 itself.
+    expect(nd({ frequency: 'interval', interval_days: '7', last_generated_date: '2026-06-01' }, TODAY))
+      .toBe('2026-08-10');
+    // 2026-06-03 + 7n → 08-12, keeping the original weekday rather than snapping to today.
+    expect(nd({ frequency: 'interval', interval_days: '7', last_generated_date: '2026-06-03' }, TODAY))
+      .toBe('2026-08-12');
+  });
+
+  it('interval: a future cursor is left alone', () => {
+    expect(nd({ frequency: 'interval', interval_days: '30', last_generated_date: '2026-09-01' }, TODAY))
+      .toBe('2026-10-01');
+  });
+
+  it('interval: rejects a non-positive interval instead of looping', () => {
+    expect(ctx.nextDueForChore({ frequency: 'interval', interval_days: '0' }, TODAY)).toBe(null);
+    expect(ctx.nextDueForChore({ frequency: 'interval', interval_days: '-7',
+                                 last_generated_date: '2026-06-01' }, TODAY)).toBe(null);
+  });
+
+  it('once: a back-dated once_date surfaces today', () => {
+    expect(nd({ frequency: 'once', once_date: '2026-07-04' }, TODAY)).toBe('2026-08-10');
+  });
+
+  it('start_date still defers past today', () => {
+    expect(nd({ frequency: 'daily', start_date: '2026-09-01', last_generated_date: '2026-02-01' }, TODAY))
+      .toBe('2026-09-01');
+  });
+
+  it('is unaffected by the trigger firing at 00:05 rather than midnight', () => {
+    // The nightly trigger runs at 00:05; comparing a timed `today` against a
+    // parsed date-only value would otherwise read as "later than today".
+    const at0005 = new Date(2026, 7, 10, 0, 5, 0);
+    expect(nd({ frequency: 'daily', last_generated_date: '2026-02-01' }, at0005)).toBe('2026-08-10');
+    expect(nd({ frequency: 'interval', interval_days: '7', last_generated_date: '2026-06-01' }, at0005))
+      .toBe('2026-08-10');
+  });
+});

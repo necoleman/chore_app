@@ -170,8 +170,26 @@ For every active chore, determine whether it's due today:
   notices it's overdue generates it immediately rather than waiting for the
   next natural occurrence. This avoids silently dropping a whole month's
   occurrence of something like "change air filters."
+- **The catch-up occurrence is dated today, never backwards.**
+  `last_generated_date` is a schedule cursor, and it can fall arbitrarily far
+  behind: it freezes entirely while a chore is `active = FALSE`, and a missed
+  nightly run leaves it short. `nextDueForChore` therefore clamps its result to
+  today — `interval` rolls forward by whole intervals (keeping cadence phase),
+  calendar frequencies resume at the next scheduled day on or after today, and a
+  back-dated `once_date` surfaces today. Without this, the occurrence "after" a
+  stale cursor is itself in the past and gets written straight into `due_date`,
+  so the assignment is *born overdue* and the cursor only creeps forward one
+  occurrence per night. Clamping collapses any backlog in a single run.
 - On generating an assignment for a `monthly`/`interval` chore, set
   `last_generated_date` = today on the Chores tab.
+- **`interval` chores re-anchor on completion.** When an interval assignment
+  reaches `done` (via `complete`, or via `approve` for review-gated chores,
+  which anchors on `completed_at` rather than the review time),
+  `last_generated_date` is stamped with the completion date. "Every 90 days"
+  therefore means 90 days from when the chore was actually done — not 90 days
+  from a due date that may have passed weeks earlier. `uncomplete` restores the
+  anchor to the occurrence's own due date. Calendar frequencies are unaffected;
+  they stay locked to their calendar.
 - If `default_assignee` is set → create an `Assignments` row, `assigned_by = auto`.
 - If not → create a row with `person_id` blank, status `open`, available to
   claim by anyone.
@@ -369,10 +387,13 @@ chore list is safe to do in bulk directly in the sheet.
 **Don't hand-edit:**
 - `chore_id` — it's the foreign key every `Assignments` row references; an
   unsynced change orphans the chore's entire history.
-- `last_generated_date` — owned by the nightly generator. Manually changing
-  it can cause a `monthly`/`interval` chore to double-generate (set too far
-  in the past) or silently skip an occurrence (set to today when it
-  shouldn't be).
+- `last_generated_date` — owned by the nightly generator. Setting it **ahead**
+  of where it belongs silently skips occurrences: the generator dedups on this
+  cursor, not on whether an assignment row exists, so it believes the work is
+  already scheduled. Setting it in the **past** is now safe — the generator
+  clamps to today rather than emitting back-dated assignments — but it still
+  won't recreate the occurrences you skipped over. Blanking it restarts the
+  chore's schedule from today.
 
 **Adding a chore:** prefer the admin screen so `chore_id` generation stays
 consistent (slug of the name + a disambiguating suffix if needed). If adding
