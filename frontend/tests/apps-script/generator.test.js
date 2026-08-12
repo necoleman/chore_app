@@ -431,3 +431,85 @@ describe('runNightlyGenerator — missed-chore collapse + penalty (#21)', () => 
     expect(read('People')[0].points_total).toBe(10); // no penalty (previous was done)
   });
 });
+
+describe('stale schedule cursor (last_generated_date)', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('reactivating a long-dormant chore generates for today, not its frozen cursor', () => {
+    // The cursor freezes while active=FALSE, so it can be months behind on return.
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 7, 10, 0, 5, 0)); // Mon 2026-08-10
+    const { ctx, read } = loadBackend({
+      People: [{ person_id: 'kid', points_total: 50 }],
+      Chores: [{ chore_id: 'c1', frequency: 'daily', active: 'FALSE', default_assignee: 'kid',
+                 points: 3, last_generated_date: '2026-02-01' }],
+    });
+
+    ctx.runNightlyGenerator();
+    expect(read('Assignments')).toHaveLength(0); // still switched off
+
+    ctx.updateRow('Chores', 'chore_id', 'c1', { active: 'TRUE' });
+    ctx.invalidateCache('Chores');
+    ctx.runNightlyGenerator();
+
+    const rows = read('Assignments');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].due_date).toBe('2026-08-10');            // not 2026-02-02
+    expect(read('Chores')[0].last_generated_date).toBe('2026-08-10');
+    expect(read('People')[0].points_total).toBe(50);        // no penalty for dormant months
+  });
+
+  it('catches up in one run rather than crawling an occurrence per night', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 7, 10, 0, 5, 0));
+    const { ctx, read } = loadBackend({
+      People: [{ person_id: 'kid', points_total: 50 }],
+      Chores: [{ chore_id: 'c1', frequency: 'daily', active: 'TRUE', default_assignee: 'kid',
+                 points: 3, last_generated_date: '2026-02-01' }],
+    });
+
+    ctx.runNightlyGenerator();
+    expect(read('Assignments').map((a) => a.due_date)).toEqual(['2026-08-10']);
+
+    // Finish it, then the following night must produce tomorrow — not 2026-02-03.
+    ctx.actionComplete({ assignment_id: read('Assignments')[0].assignment_id, person_id: 'kid' });
+    vi.setSystemTime(new Date(2026, 7, 11, 0, 5, 0));
+    ctx.runNightlyGenerator();
+    expect(read('Assignments').map((a) => a.due_date).sort()).toEqual(['2026-08-10', '2026-08-11']);
+  });
+
+  it('completing a long-overdue chore regenerates it due today, not still overdue', () => {
+    // The reported symptom: check off something overdue and it comes back overdue.
+    // While a row is open the rollover collapse hides the lag; completing it lets
+    // the next run emit the stale occurrence.
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 7, 10, 0, 5, 0));
+    const { ctx, read } = loadBackend({
+      People: [{ person_id: 'kid', points_total: 50 }],
+      Chores: [{ chore_id: 'c1', frequency: 'daily', active: 'TRUE', default_assignee: 'kid',
+                 points: 3, last_generated_date: '2026-06-11' }],
+      Assignments: [{ assignment_id: 'a1', chore_id: 'c1', person_id: 'kid',
+                      due_date: '2026-06-11', status: 'open' }],
+    });
+
+    ctx.actionComplete({ assignment_id: 'a1', person_id: 'kid' });
+    vi.setSystemTime(new Date(2026, 7, 11, 0, 5, 0));
+    ctx.runNightlyGenerator();
+
+    const fresh = read('Assignments').filter((a) => a.assignment_id !== 'a1');
+    expect(fresh).toHaveLength(1);
+    expect(fresh[0].due_date).toBe('2026-08-11');           // not 2026-06-12
+  });
+
+  it('weekly: a stranded cursor resumes on the next scheduled weekday', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 7, 10, 0, 5, 0)); // Monday
+    const { ctx, read } = loadBackend({
+      Chores: [{ chore_id: 'c1', frequency: 'weekly', custom_days: '0', active: 'TRUE',
+                 points: 2, last_generated_date: '2026-06-01' }],
+    });
+    ctx.runNightlyGenerator();
+    // Next Sunday, and not visible yet at default lead 1 — so nothing today.
+    expect(read('Assignments')).toHaveLength(0);
+
+    vi.setSystemTime(new Date(2026, 7, 16, 0, 5, 0)); // Sunday
+    ctx.runNightlyGenerator();
+    expect(read('Assignments').map((a) => a.due_date)).toEqual(['2026-08-16']);
+  });
+});

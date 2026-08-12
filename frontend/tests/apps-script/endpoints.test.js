@@ -493,3 +493,116 @@ describe('actionResetRotation (#33)', () => {
     expect(() => ctx.actionResetRotation({})).toThrow(/required/);
   });
 });
+
+describe('interval chores anchor on the completion date', () => {
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 7, 10, 12, 0, 0)); });
+  afterEach(() => vi.useRealTimers());
+
+  const intervalChore = () => ({
+    People: [{ person_id: 'kid', points_total: 0 }],
+    Chores: [{ chore_id: 'c1', frequency: 'interval', interval_days: '90', points: 5,
+               last_generated_date: '2026-06-01', active: 'TRUE' }],
+    Assignments: [{ assignment_id: 'a1', chore_id: 'c1', person_id: 'kid',
+                    due_date: '2026-06-01', status: 'open' }],
+  });
+
+  it('re-anchors to today when completed late, so the next one is a full interval out', () => {
+    const { ctx, read } = loadBackend(intervalChore());
+    ctx.actionComplete({ assignment_id: 'a1', person_id: 'kid' });
+    expect(read('Chores')[0].last_generated_date).toBe('2026-08-10');
+  });
+
+  it('leaves calendar frequencies locked to their calendar', () => {
+    const fixture = intervalChore();
+    fixture.Chores[0].frequency = 'daily';
+    const { ctx, read } = loadBackend(fixture);
+    ctx.actionComplete({ assignment_id: 'a1', person_id: 'kid' });
+    expect(read('Chores')[0].last_generated_date).toBe('2026-06-01'); // untouched
+  });
+
+  it('approve anchors on when the work was done, not when it was reviewed', () => {
+    const { ctx, read } = loadBackend({
+      People: [{ person_id: 'kid', points_total: 0 }, { person_id: 'admin', is_admin: 'TRUE' }],
+      Chores: [{ chore_id: 'c1', frequency: 'interval', interval_days: '30', points: 5,
+                 last_generated_date: '2026-06-01', active: 'TRUE' }],
+      Assignments: [{ assignment_id: 'a1', chore_id: 'c1', person_id: 'kid', due_date: '2026-06-01',
+                      status: 'pending_review', completed_at: '2026-08-08T10:00:00-05:00' }],
+    });
+    ctx.actionApprove({ assignment_id: 'a1', admin_person_id: 'admin' });
+    expect(read('Chores')[0].last_generated_date).toBe('2026-08-08');
+  });
+
+  it('uncomplete puts the anchor back on the occurrence due date', () => {
+    const { ctx, read } = loadBackend({
+      People: [{ person_id: 'kid', points_total: 5 }],
+      Chores: [{ chore_id: 'c1', frequency: 'interval', interval_days: '90', points: 5,
+                 last_generated_date: '2026-08-10', active: 'TRUE' }],
+      Assignments: [{ assignment_id: 'a1', chore_id: 'c1', person_id: 'kid', due_date: '2026-06-01',
+                      status: 'done', points_awarded: 5 }],
+    });
+    ctx.actionUncomplete({ assignment_id: 'a1' });
+    expect(read('Chores')[0].last_generated_date).toBe('2026-06-01');
+  });
+});
+
+describe('ending vacation re-dates stale rows', () => {
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 7, 10, 12, 0, 0)); });
+  afterEach(() => vi.useRealTimers());
+
+  it('re-homes an overdue row at today with a clean count, leaving current rows alone', () => {
+    const { ctx, read } = loadBackend({
+      People: [{ person_id: 'p1', name: 'Sam', on_vacation: 'TRUE' }],
+      Chores: [{ chore_id: 'c1', default_assignee: 'p1' }, { chore_id: 'c2', default_assignee: 'p1' }],
+      Assignments: [
+        { assignment_id: 'stale', chore_id: 'c1', person_id: '', due_date: '2026-07-01',
+          status: 'open', missed_count: 4 },
+        { assignment_id: 'current', chore_id: 'c2', person_id: '', due_date: '2026-08-15',
+          status: 'open' },
+      ],
+    });
+
+    ctx.actionSetVacation({ person_id: 'p1', on_vacation: false });
+    const rows = read('Assignments');
+
+    const stale = rows.find((a) => a.assignment_id === 'stale');
+    expect(stale.person_id).toBe('p1');
+    expect(stale.due_date).toBe('2026-08-10'); // no phantom month-long backlog
+    expect(stale.missed_count).toBe('');
+
+    const current = rows.find((a) => a.assignment_id === 'current');
+    expect(current.person_id).toBe('p1');
+    expect(current.due_date).toBe('2026-08-15'); // already current — left as-is
+  });
+});
+
+describe('rejecting a chore while its owner is away', () => {
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 7, 10, 12, 0, 0)); });
+  afterEach(() => vi.useRealTimers());
+
+  const fixture = (onVacation) => ({
+    People: [
+      { person_id: 'kid', name: 'Kid', on_vacation: onVacation },
+      { person_id: 'admin', name: 'Admin', is_admin: 'TRUE' },
+    ],
+    Chores: [{ chore_id: 'c1', frequency: 'weekly', custom_days: '0' }],
+    Assignments: [{ assignment_id: 'a1', chore_id: 'c1', person_id: 'kid', due_date: '2026-08-09',
+                    status: 'pending_review', completed_at: '2026-08-09T10:00:00-05:00' }],
+  });
+
+  it('parks it in unclaimed rather than stranding it on their list', () => {
+    const { ctx, read } = loadBackend(fixture('TRUE'));
+    const res = ctx.actionReject({ assignment_id: 'a1', admin_person_id: 'admin', review_note: 'redo' });
+    const row = read('Assignments')[0];
+    expect(row.status).toBe('open');
+    expect(row.person_id).toBe('');
+    expect(res.person_id).toBe(null);      // client clears the card immediately
+    expect(res.person_name).toBe(null);
+  });
+
+  it('keeps the assignee when they are not away', () => {
+    const { ctx, read } = loadBackend(fixture(''));
+    const res = ctx.actionReject({ assignment_id: 'a1', admin_person_id: 'admin', review_note: 'redo' });
+    expect(read('Assignments')[0].person_id).toBe('kid');
+    expect(res.person_id).toBeUndefined();
+  });
+});

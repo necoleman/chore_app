@@ -122,27 +122,48 @@ function appearOffsetDays(chore) {
 // The due date of the NEXT occurrence to schedule — strictly after the last
 // generated one (anchored on `last_generated_date`), or the first occurrence if
 // never generated. Respects `start_date`. Returns a Date, or null if none.
+//
+// Never returns a date before today. `last_generated_date` is a schedule cursor,
+// and it can fall arbitrarily far behind reality — it freezes entirely while a
+// chore is inactive, and a missed nightly run leaves it a day short. Without the
+// clamp, the occurrence "after" a stale cursor is itself in the past and gets
+// written straight into `due_date`, so the assignment is born overdue and the
+// cursor only creeps forward one occurrence per nightly run. Clamping collapses
+// any backlog in a single run. Mirrors the frontend's `nextDueDate`
+// (lib/dueDates.js), which has always rolled forward to today.
 function nextDueForChore(chore, today) {
   var freq = chore.frequency;
   var lastGen = chore.last_generated_date ? parseISODate(chore.last_generated_date) : null;
   var start = chore.start_date ? parseISODate(chore.start_date) : null;
+  // Midnight-normalized "today". The nightly trigger fires at 00:05, so comparing
+  // against the raw `today` (which carries a time) would read as later than a
+  // parsed date-only value for the same calendar day.
+  var todayMid = parseISODate(formatDate(today));
 
   if (freq === 'once') {
     if (chore.last_generated_date) return null;   // one-and-done
     if (!chore.once_date) return null;
-    return parseISODate(chore.once_date);
+    var once = parseISODate(chore.once_date);
+    // A back-dated once_date (hand-entered, or a chore added after the fact)
+    // surfaces today rather than as an already-overdue row.
+    return once.getTime() < todayMid.getTime() ? todayMid : once;
   }
 
   if (freq === 'interval') {
     var n = parseInt(chore.interval_days, 10);
-    if (!n) return null;
-    if (!lastGen) return (start && start.getTime() > today.getTime()) ? start : today;
-    return addDaysDate(lastGen, n);
+    if (!n || n < 1) return null;
+    if (!lastGen) return (start && start.getTime() > todayMid.getTime()) ? start : todayMid;
+    // Advance by whole intervals so the cadence keeps its phase, rather than
+    // snapping to today and resetting it.
+    var due = addDaysDate(lastGen, n);
+    while (due.getTime() < todayMid.getTime()) due = addDaysDate(due, n);
+    return due;
   }
 
   // Calendar frequencies: scan forward from the day after the last occurrence
   // (or the first eligible day) for the next scheduled due day.
-  var from = lastGen ? addDaysDate(lastGen, 1) : ((start && start.getTime() > today.getTime()) ? start : today);
+  var from = lastGen ? addDaysDate(lastGen, 1) : todayMid;
+  if (from.getTime() < todayMid.getTime()) from = todayMid;
   if (start && start.getTime() > from.getTime()) from = start;
   if (freq === 'daily') return from;
   for (var i = 0; i < 400; i++) {

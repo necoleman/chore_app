@@ -209,6 +209,7 @@ function actionComplete(body) {
       review_note: '',
     });
     incrementPoints(personId, points, people);
+    anchorIntervalOnCompletion(assignment.chore_id, todayStr());
     invalidateCache('Assignments');
     invalidateCache('People');
     return { status: 'done', completed_at: now, points_awarded: points };
@@ -244,6 +245,13 @@ function actionApprove(body) {
     invalidateCache('People');
   }
 
+  // Anchor on when the work was actually done, not when the admin got around to
+  // reviewing it — an approval three days later must not push the cadence out.
+  anchorIntervalOnCompletion(
+    assignment.chore_id,
+    String(assignment.completed_at || '').slice(0, 10) || todayStr()
+  );
+
   invalidateCache('Assignments');
   return { status: 'done', points_awarded: points, reviewed_at: now };
 }
@@ -261,13 +269,26 @@ function actionReject(body) {
   if (assignment.status !== 'pending_review') throw new Error('Assignment is not pending review');
 
   var now = nowIso();
-  updateRow('Assignments', 'assignment_id', assignmentId, {
+  var updates = {
     status: 'open',
     completed_at: '',
     reviewed_by: adminPersonId,
     reviewed_at: now,
     review_note: reviewNote,
-  });
+  };
+
+  // Sending a chore back to someone who is away leaves it stranded on their list
+  // aging all trip — turning vacation ON only sweeps rows that were already open,
+  // so a later reject slips past it. Park it in unclaimed instead, exactly as the
+  // vacation sweep would have; the vacation-off re-home returns it to them.
+  var owner = assignment.person_id
+    ? getRows('People').find(function(p) { return p.person_id === assignment.person_id; })
+    : null;
+  if (owner && (owner.on_vacation === true || owner.on_vacation === 'TRUE')) {
+    updates.person_id = '';
+  }
+
+  updateRow('Assignments', 'assignment_id', assignmentId, updates);
 
   // #25: A daily chore whose prior (pending) occurrence is sent back becomes
   // overdue again (its due_date is now in the past → renders overdue). Because
@@ -293,7 +314,16 @@ function actionReject(body) {
   }
 
   invalidateCache('Assignments');
-  return { status: 'open', review_note: reviewNote, reviewed_at: now };
+  var result = { status: 'open', review_note: reviewNote, reviewed_at: now };
+  // If it was unclaimed above, clear the denormalized person fields too — the
+  // client merges this response into the card, and leaving them set would keep
+  // showing the vacationing owner until the next 30s poll.
+  if (updates.hasOwnProperty('person_id')) {
+    result.person_id = null;
+    result.person_name = null;
+    result.person_color = null;
+  }
+  return result;
 }
 
 // ─── POST: uncomplete (undo a mistaken check) ─────────────────────────────────
@@ -328,6 +358,10 @@ function actionUncomplete(body) {
     completed_at: '',
     points_awarded: '',
   });
+
+  // Undo the completion re-anchor: put the cursor back on this occurrence's own
+  // due date, which is what the generator stamped when it created the row.
+  anchorIntervalOnCompletion(assignment.chore_id, String(assignment.due_date || '').slice(0, 10));
 
   invalidateCache('Assignments');
   return { status: 'open', completed_at: null, points_awarded: null };
@@ -564,9 +598,19 @@ function actionSetVacation(body) {
         .split(',').map(function(s) { return s.trim(); }).filter(Boolean);
       if (list.length === 1 && list[0] === personId) soleDefault[c.chore_id] = true;
     });
+    var today = todayStr();
     getRows('Assignments').forEach(function(a) {
       if (!a.person_id && a.status === 'open' && soleDefault[a.chore_id]) {
-        updateRow('Assignments', 'assignment_id', a.assignment_id, { person_id: personId });
+        var updates = { person_id: personId };
+        // Don't hand back a chore that "went overdue" while they were away and
+        // nobody could have done it. A row still due today or later keeps its
+        // date; a stale one restarts from today with a clean miss count, so the
+        // returning person gets a real deadline instead of a phantom backlog.
+        if (String(a.due_date || '').slice(0, 10) < today) {
+          updates.due_date = today;
+          updates.missed_count = '';
+        }
+        updateRow('Assignments', 'assignment_id', a.assignment_id, updates);
       }
     });
   }
@@ -616,4 +660,23 @@ function incrementPoints(personId, points, people) {
   if (!person) return;
   var current = parseInt(person.points_total, 10) || 0;
   updateRow('People', 'person_id', personId, { points_total: Math.max(0, current + points) });
+}
+
+// Re-anchor an INTERVAL chore's schedule cursor to `dateISO` (the completion
+// date). "Every 90 days" means 90 days from when the chore was actually done —
+// otherwise doing it 30 days late leaves the next occurrence only 60 days out,
+// because the cursor is stamped with the occurrence's due date at generation.
+//
+// Interval only: calendar frequencies (daily/weekly/custom/monthly/once) must
+// stay locked to their calendar, so completing one early or late must not shift
+// the cadence. No-op for anything else.
+function anchorIntervalOnCompletion(choreId, dateISO) {
+  if (!dateISO) return; // never blank the cursor — that would regenerate from scratch
+  var chore = getRows('Chores').find(function(c) { return c.chore_id === choreId; });
+  if (!chore || chore.frequency !== 'interval') return;
+  // Idempotent, like stampLastGenerated — completing on the due date is the common
+  // case and shouldn't cost a sheet write.
+  if (String(chore.last_generated_date || '').slice(0, 10) === dateISO) return;
+  updateRow('Chores', 'chore_id', choreId, { last_generated_date: dateISO });
+  invalidateCache('Chores');
 }
