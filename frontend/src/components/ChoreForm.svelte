@@ -28,15 +28,29 @@
         once_date: '',
         start_date: '',
         lead_days: '',
-        recur_mode: 'rollover',
+        sort_last: false,
         default_assignee: '',
         requires_approval: false,
         active: true,
       };
 
-  // Legacy chores have no recur_mode — treat blank as the default "rollover" so
-  // the <select> shows a valid option (#30).
-  if (!form.recur_mode) form.recur_mode = 'rollover';
+  // Sheets stores blanks as '' — normalise to a real boolean so the checkbox
+  // binds correctly on legacy rows that predate the column.
+  form.sort_last = form.sort_last === true || form.sort_last === 'TRUE';
+
+  // A rotation is a comma-delimited list of person_ids (#24). It can't be
+  // represented by the single-choice <select> below: no option matches, so the
+  // field would render BLANK and picking anyone would replace the whole rotation
+  // with one person. Show it read-only instead — the value round-trips through
+  // save untouched, and there's simply no control present to break it. Creating
+  // and re-ordering rotations remains a sheet operation.
+  $: isRotation = String(form.default_assignee || '').includes(',');
+  $: rotationLabel = String(form.default_assignee || '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean)
+    .map((id) => people.find((p) => p.person_id === id)?.name ?? id)
+    .join(' → ');
 
   // Show the chore's current location even if it's no longer in the managed list
   // (e.g. a legacy value), so editing never silently drops it.
@@ -297,23 +311,29 @@
       {/if}
 
       {#if form.frequency !== 'once'}
+      {/if}
+
+      {#if isRotation}
+        <div class="field">
+          <span class="label">Default assignee</span>
+          <p class="readonly-value">{rotationLabel}</p>
+          <span class="hint">Rotates in this order. Edit rotations in the Chores sheet.</span>
+        </div>
+      {:else}
         <label class="field">
-          <span class="label">If not done when it recurs</span>
-          <select bind:value={form.recur_mode} class="input">
-            <option value="rollover">Roll over (keep one overdue item)</option>
-            <option value="recreate">Recreate (stack a new one each time)</option>
+          <span class="label">Default assignee</span>
+          <select bind:value={form.default_assignee} class="input">
+            <option value="">Unassigned (claimable)</option>
+            {#each people as person (person.person_id)}
+              <option value={person.person_id}>{person.name}</option>
+            {/each}
           </select>
         </label>
       {/if}
 
-      <label class="field">
-        <span class="label">Default assignee</span>
-        <select bind:value={form.default_assignee} class="input">
-          <option value="">Unassigned (claimable)</option>
-          {#each people as person (person.person_id)}
-            <option value={person.person_id}>{person.name}</option>
-          {/each}
-        </select>
+      <label class="field field--row">
+        <input type="checkbox" bind:checked={form.sort_last} />
+        <span class="label">Show at the end of its group</span>
       </label>
 
       <label class="field field--row">
@@ -365,6 +385,17 @@
     background: #d1d5db;
     border-radius: 2px;
     margin: 0 auto 16px;
+  }
+
+  .readonly-value {
+    font-size: 15px;
+    color: #111827;
+    padding: 10px 0 2px;
+  }
+
+  .hint {
+    font-size: 12px;
+    color: #9ca3af;
   }
 
   .sheet-title {

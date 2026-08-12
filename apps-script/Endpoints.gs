@@ -44,6 +44,12 @@ function actionToday(params) {
       description:      chore.description || '',
       frequency:        chore.frequency || '',
       lead_days:        chore.name ? effectiveLeadDays(chore) : '',
+      // Cadence in days, for the Today screen's grouping/ordering (#38).
+      period_days:      chore.name ? sortPeriodDays(chore) : 1,
+      // Sinks to the end of its cadence group, e.g. after-dinner chores (#40).
+      sort_last:        chore.sort_last === true || chore.sort_last === 'TRUE',
+      // Manual one-offs sit outside the recurrence and are grouped separately.
+      is_one_off:       a.assigned_by === 'manual' || chore.frequency === 'once',
       points:           chore.points || 0,
       requires_approval: chore.requires_approval === true || chore.requires_approval === 'TRUE',
       person_id:        a.person_id || null,
@@ -111,6 +117,62 @@ function actionLocations(params) {
   return { locations: getRows('Locations') };
 }
 
+// ─── GET: leaderboard ─────────────────────────────────────────────────────────
+//
+// Point totals per person over four windows, in one call so the UI's window
+// toggle never refetches (#38).
+//
+// The short windows are summed from the Assignments log, bucketed by when the
+// work actually happened (`completed_at`, falling back to `due_date` — the same
+// rule actionHistory sorts by). A missed occurrence records its penalty as a
+// negative `points_awarded`, so these net out losses automatically.
+//
+// All time deliberately uses the running `points_total` instead: it's a tally
+// rather than a query, so archiving old Assignments rows (see spec §9) can't
+// truncate it. Note it is floored at 0 by incrementPoints, so it can read
+// slightly higher than a true sum of the log.
+function actionLeaderboard(params) {
+  var people = getRows('People');
+  var assignments = getRows('Assignments');
+
+  var today = todayStr();
+  var weekStart = getWeekStart();
+  var monthStart = today.slice(0, 8) + '01';
+
+  var totals = {};
+  people.forEach(function(p) { totals[p.person_id] = { today: 0, week: 0, month: 0 }; });
+
+  assignments.forEach(function(a) {
+    if (!a.person_id || !totals[a.person_id]) return;
+    var pts = parseInt(a.points_awarded, 10);
+    if (!pts) return;
+    var when = String(a.completed_at || a.due_date || '').slice(0, 10);
+    if (!when) return;
+    if (when >= monthStart) totals[a.person_id].month += pts;
+    if (when >= weekStart) totals[a.person_id].week += pts;
+    if (when === today) totals[a.person_id].today += pts;
+  });
+
+  var result = people.map(function(p) {
+    var t = totals[p.person_id] || { today: 0, week: 0, month: 0 };
+    return {
+      person_id:      p.person_id,
+      name:           p.name,
+      color:          p.color,
+      is_admin:       p.is_admin === true || p.is_admin === 'TRUE',
+      on_vacation:    p.on_vacation === true || p.on_vacation === 'TRUE',
+      streak_current: parseInt(p.streak_current, 10) || 0,
+      streak_best:    parseInt(p.streak_best, 10) || 0,
+      points_today:   t.today,
+      points_week:    t.week,
+      points_month:   t.month,
+      points_all:     parseInt(p.points_total, 10) || 0,
+    };
+  });
+
+  return { leaderboard: result };
+}
+
 // ─── GET: history ─────────────────────────────────────────────────────────────
 
 function actionHistory(params) {
@@ -155,6 +217,10 @@ function actionHistory(params) {
       completed_at:  a.completed_at || null,
       points_awarded: a.points_awarded || null,
       review_note:   a.review_note || null,
+      // Who approved, sent back, or excused it. Lets History distinguish an admin
+      // skip ("Skipped by Rachel") from an automatic miss, which has no reviewer
+      // and carries a negative points_awarded instead.
+      reviewer_name: a.reviewed_by ? ((personMap[a.reviewed_by] || {}).name || null) : null,
     };
   });
 
@@ -227,6 +293,16 @@ function actionApprove(body) {
   if (!assignment) throw new Error('Assignment not found');
   if (assignment.status !== 'pending_review') throw new Error('Assignment is not pending review');
 
+  // The occurrence may have been superseded while it sat waiting — the generator
+  // creates the next one alongside a pending row rather than blocking on review.
+  // Approving establishes that the chore WAS completed, so the miss streak resets
+  // on whatever occurrence is now live; otherwise someone who did the work on time
+  // keeps seeing "missed 3×" purely because the review was slow (#38).
+  var live = liveOccurrence(assignment.chore_id, assignmentId);
+  if (live && (parseInt(live.missed_count, 10) || 0) !== 0) {
+    updateRow('Assignments', 'assignment_id', live.assignment_id, { missed_count: '' });
+  }
+
   var chores = getRows('Chores');
   var chore = chores.find(function(c) { return c.chore_id === assignment.chore_id; });
   var points = chore ? (parseInt(chore.points, 10) || 0) : 0;
@@ -288,33 +364,54 @@ function actionReject(body) {
     updates.person_id = '';
   }
 
-  updateRow('Assignments', 'assignment_id', assignmentId, updates);
+  // A rejection must land exactly as if the chore had simply never been done
+  // (#38). Whether that's still actionable depends on timing:
+  //
+  //   • Not superseded (same day) — reopen it, still doable. Nothing is deducted;
+  //     the normal nightly close handles it if it stays undone.
+  //   • Superseded — a newer occurrence already exists, so this one is history.
+  //     Close it as missed with the points deducted, bump the live occurrence's
+  //     miss count, and leave that fresh occurrence alone. The assignee simply
+  //     does today's.
+  //
+  // This replaces the #25 newer-occurrence deletion, which reopened the old row
+  // and deleted the new one — the opposite reconciliation.
+  var live = liveOccurrence(assignment.chore_id, assignmentId);
+  if (live) {
+    var chore = getRows('Chores').find(function(c) { return c.chore_id === assignment.chore_id; });
+    var points = chore ? (parseInt(chore.points, 10) || 0) : 0;
 
-  // #25: A daily chore whose prior (pending) occurrence is sent back becomes
-  // overdue again (its due_date is now in the past → renders overdue). Because
-  // the nightly generator already created a fresh occurrence "as if yesterday
-  // was done", we must reconcile that newer occurrence so we don't end up with
-  // two live rows for the same daily chore:
-  //   (a) a newer OPEN occurrence is deleted — the sent-back one is the single
-  //       outstanding assignment to redo;
-  //   (b) a newer done/pending occurrence is left alone — the work is done.
-  // Scoped to daily chores (per the enhancement); other frequencies rely on the
-  // lead-window collapse in the generator and are left untouched.
-  // ...except "recreate" daily chores (#30), which legitimately keep multiple
-  // open occurrences (they stack), so we must NOT delete the newer ones.
-  var chore = getRows('Chores').find(function(c) { return c.chore_id === assignment.chore_id; });
-  if (chore && chore.frequency === 'daily' && String(chore.recur_mode || 'rollover') !== 'recreate') {
-    getRows('Assignments').forEach(function(a) {
-      if (a.chore_id !== assignment.chore_id) return;
-      if (a.due_date <= assignment.due_date) return;      // only NEWER occurrences
-      if (a.status === 'open') {
-        deleteRow('Assignments', 'assignment_id', a.assignment_id);
-      }
+    updates.status = 'skipped';
+    updates.completed_at = '';
+    if (points > 0 && assignment.person_id) {
+      incrementPoints(assignment.person_id, -points, getRows('People'));
+      updates.points_awarded = -points;
+      invalidateCache('People');
+    }
+
+    // Carry the feedback onto the live card. The closed row is off the Today
+    // screen, so a note left only there is never read — the assignee would just
+    // watch points disappear with no explanation.
+    updateRow('Assignments', 'assignment_id', live.assignment_id, {
+      missed_count: (parseInt(live.missed_count, 10) || 0) + 1,
+      review_note: reviewNote,
+      reviewed_by: adminPersonId,
+      reviewed_at: now,
     });
   }
 
+  updateRow('Assignments', 'assignment_id', assignmentId, updates);
+
+  // Pending occurrences count toward the streak, so retracting one has to undo
+  // the credit it was given. Rebuild from the log rather than zeroing, so days
+  // genuinely earned since aren't discarded (#38).
+  if (assignment.person_id) {
+    recomputeStreak(assignment.person_id);
+    invalidateCache('People');
+  }
+
   invalidateCache('Assignments');
-  var result = { status: 'open', review_note: reviewNote, reviewed_at: now };
+  var result = { status: updates.status, review_note: reviewNote, reviewed_at: now };
   // If it was unclaimed above, clear the denormalized person fields too — the
   // client merges this response into the card, and leaving them set would keep
   // showing the vacationing owner until the next 30s poll.
@@ -369,9 +466,31 @@ function actionUncomplete(body) {
 
 // ─── POST: skip ───────────────────────────────────────────────────────────────
 
+// Any admin can excuse any chore — their own, someone else's, or an unclaimed
+// one. Closes the occurrence exactly as a miss does, EXCEPT that no points are
+// deducted: the row carries no `points_awarded`, and that absence is what
+// distinguishes an excusal from a miss in History (#38).
+//
+// The occurrence still counts toward the chore's miss streak — the next
+// generated one inherits count + 1 via `missesToCarry` — because the chore
+// genuinely wasn't done. `reviewed_by`/`reviewed_at` record who excused it.
+//
+// For a recurring chore the next occurrence arrives on its normal regeneration
+// date. For a manual one-off there is no next occurrence, so skipping is simply
+// how you clear an ad-hoc request you've changed your mind about.
 function actionSkip(body) {
   var assignmentId = body.assignment_id;
-  updateRow('Assignments', 'assignment_id', assignmentId, { status: 'skipped' });
+  var adminPersonId = body.admin_person_id || '';
+
+  var assignment = getRows('Assignments')
+    .find(function(a) { return a.assignment_id === assignmentId; });
+  if (!assignment) throw new Error('Assignment not found');
+
+  updateRow('Assignments', 'assignment_id', assignmentId, {
+    status: 'skipped',
+    reviewed_by: adminPersonId,
+    reviewed_at: nowIso(),
+  });
   invalidateCache('Assignments');
   return { status: 'skipped' };
 }
@@ -382,13 +501,22 @@ function actionClaim(body) {
   var assignmentId = body.assignment_id;
   var personId = body.person_id;
   if (!personId) throw new Error('person_id required');
-  var found = updateRow('Assignments', 'assignment_id', assignmentId, {
-    person_id: personId,
-    assigned_by: 'manual',
-  });
-  if (!found) throw new Error('Assignment not found: ' + assignmentId);
+
+  var assignment = getRows('Assignments')
+    .find(function(a) { return a.assignment_id === assignmentId; });
+  if (!assignment) throw new Error('Assignment not found: ' + assignmentId);
+
+  var updates = { person_id: personId };
+  // Taking ownership restarts the clock (#38): the due date becomes today, so
+  // whoever picks the chore up gets a real deadline rather than inheriting
+  // somebody else's lateness. `missed_count` deliberately survives — the date is
+  // the current expectation, the counter is the record of neglect.
+  var today = todayStr();
+  if (String(assignment.due_date || '').slice(0, 10) !== today) updates.due_date = today;
+
+  updateRow('Assignments', 'assignment_id', assignmentId, updates);
   invalidateCache('Assignments');
-  return { success: true };
+  return { success: true, due_date: updates.due_date || assignment.due_date };
 }
 
 // ─── POST: assign (manual assignment creation) ────────────────────────────────
@@ -418,18 +546,33 @@ function actionReassign(body) {
   var personId = body.person_id;
   var adminPersonId = body.admin_person_id;
 
+  var assignment = getRows('Assignments')
+    .find(function(a) { return a.assignment_id === assignmentId; });
+  if (!assignment) throw new Error('Assignment not found: ' + assignmentId);
+
   var now = nowIso();
-  updateRow('Assignments', 'assignment_id', assignmentId, {
+  var updates = {
     person_id: personId,
     last_modified_by: adminPersonId,
     last_modified_at: now,
-  });
+  };
+
+  // Same rule as claiming (#38): handing a chore to someone resets its due date
+  // to today, so they aren't given a deadline that has already passed. Applies
+  // whether it came from unclaimed or from another person. Skipped when clearing
+  // the assignee — an unclaimed chore keeps its date and keeps ageing.
+  var today = todayStr();
+  if (personId && String(assignment.due_date || '').slice(0, 10) !== today) {
+    updates.due_date = today;
+  }
+
+  updateRow('Assignments', 'assignment_id', assignmentId, updates);
   invalidateCache('Assignments');
 
   // Push notification to newly assigned person
-  sendAssignmentNotification(assignmentId, personId);
+  if (personId) sendAssignmentNotification(assignmentId, personId);
 
-  return { success: true, last_modified_at: now };
+  return { success: true, last_modified_at: now, due_date: updates.due_date || assignment.due_date };
 }
 
 // ─── POST: bump ───────────────────────────────────────────────────────────────
@@ -478,7 +621,7 @@ function actionAddChore(body) {
     once_date: body.once_date || '',
     start_date: body.start_date || '',
     lead_days: (body.lead_days === 0 || body.lead_days) ? body.lead_days : '',
-    recur_mode: body.recur_mode || 'rollover',
+    sort_last: body.sort_last === true || body.sort_last === 'true' ? true : false,
     last_generated_date: '',
     default_assignee: body.default_assignee || '',
     requires_approval: body.requires_approval === true || body.requires_approval === 'true' ? true : false,
@@ -506,7 +649,7 @@ function actionUpdateChore(body) {
   var updates = {};
   var allowed = ['name', 'location', 'description', 'points', 'frequency', 'custom_days',
                  'monthly_day', 'monthly_week', 'monthly_weekday', 'interval_days', 'once_date',
-                 'start_date', 'lead_days', 'recur_mode', 'default_assignee', 'requires_approval', 'active'];
+                 'start_date', 'lead_days', 'sort_last', 'default_assignee', 'requires_approval', 'active'];
   allowed.forEach(function(field) {
     if (body.hasOwnProperty(field)) updates[field] = body[field];
   });
@@ -602,13 +745,12 @@ function actionSetVacation(body) {
     getRows('Assignments').forEach(function(a) {
       if (!a.person_id && a.status === 'open' && soleDefault[a.chore_id]) {
         var updates = { person_id: personId };
-        // Don't hand back a chore that "went overdue" while they were away and
-        // nobody could have done it. A row still due today or later keeps its
-        // date; a stale one restarts from today with a clean miss count, so the
-        // returning person gets a real deadline instead of a phantom backlog.
+        // Same rule as claim/reassign (#38): taking ownership re-dates to today,
+        // so nobody returns to a deadline that passed while they were away. The
+        // miss count is kept — the date is the current expectation, the counter
+        // is the record that the chore went undone.
         if (String(a.due_date || '').slice(0, 10) < today) {
           updates.due_date = today;
-          updates.missed_count = '';
         }
         updateRow('Assignments', 'assignment_id', a.assignment_id, updates);
       }
@@ -653,6 +795,26 @@ function actionResetRotation(body) {
 }
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
+
+// The chore's current live occurrence — the newest auto row that hasn't reached a
+// terminal state — optionally excluding one assignment_id (the one being acted
+// on). Manual one-offs are excluded: they sit outside the recurrence, so they are
+// never the occurrence a review reconciles against.
+//
+// Used by approve/reject, which may land days after the occurrence they concern
+// has already been superseded by the nightly roll-forward.
+function liveOccurrence(choreId, excludeAssignmentId) {
+  return getRows('Assignments')
+    .filter(function(a) {
+      return a.chore_id === choreId
+        && a.assignment_id !== excludeAssignmentId
+        && a.assigned_by !== 'manual'
+        && (a.status === 'open' || a.status === 'pending_review');
+    })
+    .reduce(function(latest, a) {
+      return (!latest || a.due_date > latest.due_date) ? a : latest;
+    }, null);
+}
 
 function incrementPoints(personId, points, people) {
   if (!points) return; // allow negative (undo); skip only a no-op zero

@@ -1,7 +1,7 @@
 <script>
   import { people } from '../stores/data.js';
   import { currentUser } from '../stores/user.js';
-  import { reassignAssignment, bumpAssignment } from '../stores/data.js';
+  import { reassignAssignment, bumpAssignment, skipAssignment } from '../stores/data.js';
   import PersonPicker from './PersonPicker.svelte';
   import { portal } from '../lib/portal.js';
 
@@ -25,6 +25,13 @@
   function handleBump() {
     bumpAssignment(assignment.assignment_id, bumpDate, $currentUser.person_id);
     showBump = false;
+  }
+
+  // Excuse this occurrence: it leaves the list, nobody loses points, and the
+  // chore returns on its normal schedule. A one-off simply goes away.
+  function handleSkip() {
+    skipAssignment(assignment.assignment_id, $currentUser.person_id);
+    open = false;
   }
 </script>
 
@@ -52,6 +59,9 @@
           ↩ Make unclaimed
         </button>
       {/if}
+      <button class="menu-item" on:click|stopPropagation={handleSkip}>
+        ⊘ Skip this one
+      </button>
     </div>
   {/if}
 </div>

@@ -49,6 +49,7 @@ function dispatchGet(action, params) {
     case 'chores':  return actionChores(params);
     case 'locations': return actionLocations(params);
     case 'history': return actionHistory(params);
+    case 'leaderboard': return actionLeaderboard(params);
     default:        throw new Error('Unknown action: ' + action);
   }
 }
@@ -90,8 +91,12 @@ function setup() {
   // Delete existing triggers then recreate to avoid duplicates.
   ScriptApp.getProjectTriggers().forEach(function(t) { ScriptApp.deleteTrigger(t); });
 
+  // 3am rather than midnight: it clears the date boundary, and unlike 2am it is
+  // not the hour US daylight saving flips (that hour doesn't exist on
+  // spring-forward Sunday, so the run could be skipped). Apps Script fires
+  // hourly triggers somewhere inside the named hour.
   ScriptApp.newTrigger('runNightlyGenerator')
-    .timeBased().atHour(0).everyDays(1).create();
+    .timeBased().atHour(3).everyDays(1).create();
 
   ScriptApp.newTrigger('runStreakMaintenance')
     .timeBased().atHour(23).everyDays(1).create();

@@ -6,6 +6,10 @@
   export let onSelect;
   export let onClose;
   export let title = 'Select person';
+  // Offers an explicit "Unassigned" choice, for flows where leaving a chore
+  // claimable is a real answer rather than an omission (#39). onSelect receives
+  // null in that case.
+  export let allowUnassigned = false;
 </script>
 
 <div class="backdrop" use:portal on:click|self={onClose}>
@@ -13,6 +17,16 @@
     <div class="sheet-handle"></div>
     <h2 class="sheet-title">{title}</h2>
     <div class="person-grid">
+      {#if allowUnassigned}
+        <button
+          class="person-btn"
+          class:selected={!selected}
+          on:click={() => { onSelect(null); onClose(); }}
+        >
+          <div class="avatar avatar--none">?</div>
+          <span class="name">Unassigned</span>
+        </button>
+      {/if}
       {#each people as person (person.person_id)}
         <button
           class="person-btn"
@@ -100,6 +114,11 @@
     justify-content: center;
     font-size: 18px;
     font-weight: 700;
+  }
+
+  .avatar--none {
+    background: #e5e7eb;
+    color: #6b7280;
   }
 
   .name {

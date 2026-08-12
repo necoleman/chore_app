@@ -3,6 +3,8 @@
   import { get as apiGet, post } from '../api/client.js';
   import { showToast } from '../stores/ui.js';
   import ChoreForm from '../components/ChoreForm.svelte';
+  import PersonPicker from '../components/PersonPicker.svelte';
+  import { assignChoreToday } from '../stores/data.js';
   import CollapsibleDescription from '../components/CollapsibleDescription.svelte';
   import { today } from '../lib/utils.js';
   import { nextDueLabel, daysUntilDue, shortDateStr } from '../lib/dueDates.js';
@@ -13,6 +15,7 @@
   let loading = true;
   let error = null;
   let editingChore = null;   // null = not editing, object = edit existing
+  let assigningChore = null; // chore awaiting an assignee for a one-off today
   let showAddForm = false;
   let addInitialName = '';    // prefill the new-chore form (from search)
   let searchTerm = '';
@@ -110,25 +113,8 @@
   $: noResults =
     searchTerm.trim() !== '' && activeChores.length === 0 && inactiveChores.length === 0;
 
-  // Vacation mode (#29): while a person is away their open assignments go to
-  // unclaimed and their default/rotation chores skip them; toggling off re-homes
-  // their sole-default chores back to them (handled server-side).
-  const isOnVacation = (p) => p.on_vacation === true || p.on_vacation === 'TRUE';
-  let vacationBusy = null; // person_id being toggled
-
-  async function toggleVacation(person) {
-    const next = !isOnVacation(person);
-    vacationBusy = person.person_id;
-    try {
-      await post('set_vacation', { person_id: person.person_id, on_vacation: next });
-      showToast(next ? `${person.name} is on vacation` : `${person.name} is back`, 'success');
-      await load();
-    } catch (e) {
-      showToast(e.message || 'Could not update vacation status');
-    } finally {
-      vacationBusy = null;
-    }
-  }
+  // Vacation controls moved to the Leaders tab (#38) — easier to reach, and the
+  // people list already lives there.
 
   // Rotation reset (#33): a rotating chore (comma-list default_assignee) can be
   // reset to the top — its current (open, not-overdue) assignments go back to the
@@ -227,6 +213,7 @@
                   on:click={() => resetRotation(chore)}
                 >Reset rotation</button>
               {/if}
+              <button class="add-today-btn" on:click={() => (assigningChore = chore)}>Add</button>
               <button class="edit-btn" on:click={() => (editingChore = chore)}>Edit</button>
             </div>
           </div>
@@ -253,29 +240,6 @@
       </section>
     {/if}
 
-    {#if !searchTerm.trim() && people.length > 0}
-      <section class="section">
-        <h2 class="section-title">People</h2>
-        {#each people as person (person.person_id)}
-          <div class="person-row">
-            <span class="person-dot" style="background:{person.color || '#9ca3af'}"></span>
-            <span class="person-name">{person.name}</span>
-            {#if isOnVacation(person)}
-              <span class="tag tag--vacation">✈ On vacation</span>
-            {/if}
-            <button
-              class="vacation-btn"
-              class:vacation-btn--on={isOnVacation(person)}
-              disabled={vacationBusy === person.person_id}
-              on:click={() => toggleVacation(person)}
-            >
-              {isOnVacation(person) ? 'End vacation' : 'Set vacation'}
-            </button>
-          </div>
-        {/each}
-      </section>
-    {/if}
-
     {#if noResults}
       <div class="no-results">
         <p class="no-results-text">No chores match “{searchTerm}”.</p>
@@ -286,6 +250,25 @@
     {/if}
   {/if}
 </div>
+
+<!-- "Add" on a chore row creates an EXTRA assignment due today (#39). It sits
+     outside the recurrence — the generator never rolls it forward or penalizes
+     it — so the chore's own schedule is untouched. Unassigned is offered for
+     "this needs doing sooner than planned but I don't know who'll do it". -->
+{#if assigningChore}
+  <PersonPicker
+    {people}
+    selected={''}
+    allowUnassigned={true}
+    title="Create assignment due today"
+    onSelect={async (person) => {
+      const target = assigningChore;
+      assigningChore = null;
+      await assignChoreToday(target.chore_id, person?.person_id ?? '');
+    }}
+    onClose={() => (assigningChore = null)}
+  />
+{/if}
 
 {#if showAddForm}
   <ChoreForm
@@ -395,14 +378,24 @@
   }
 
   .tag--review { background: #fef3c7; color: #92400e; }
-  .tag--vacation { background: #ffedd5; color: #9a3412; }
-  .tag--location { background: #e0e7ff; color: #3730a3; }
+    .tag--location { background: #e0e7ff; color: #3730a3; }
   .tag--next { background: #ecfeff; color: #0e7490; }
   .tag--last-done { background: #f3f4f6; color: #6b7280; }
   .tag--assignee { background: #dcfce7; color: #166534; }
   .tag--unclaimed { background: #f3f4f6; color: #6b7280; font-style: italic; }
 
   .chore-actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+
+  .add-today-btn {
+    background: #16a34a;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
 
   .edit-btn {
     background: none;
@@ -448,22 +441,9 @@
 
   .person-name { font-size: 15px; font-weight: 600; color: #111827; flex: 1; }
 
-  .vacation-btn {
-    background: none;
-    border: 1px solid #d1d5db;
-    border-radius: 8px;
-    padding: 6px 12px;
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    color: #374151;
-    flex-shrink: 0;
-  }
 
-  .vacation-btn--on { border-color: #f97316; color: #9a3412; }
-
-  .vacation-btn:disabled { opacity: 0.5; cursor: default; }
-
+  
+  
   .no-results {
     text-align: center;
     padding: 24px 16px;
