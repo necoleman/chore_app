@@ -3,7 +3,12 @@
 
   export let person;
   export let rank;
-  export let weekPoints = 0;
+  export let points = 0;
+  export let unit = 'pts';
+  export let allTime = 0;
+  // Hidden when All time is the selected window, so the same figure never shows
+  // twice on one card.
+  export let showAllTime = true;
 </script>
 
 <div class="row">
@@ -21,15 +26,16 @@
         <span class="streak-badge current">🔥 {person.streak_current} day streak</span>
       {/if}
       {#if person.streak_best > 0}
-        <span class="streak-badge best">Best: {person.streak_best}</span>
+        <!-- Spelled out: "Best: 12" standing alone read like a points figure. -->
+        <span class="streak-badge best">Best streak: {person.streak_best} days</span>
       {/if}
     </div>
   </div>
   <div class="points-col">
-    <span class="pts-total">{person.points_total ?? 0}</span>
-    <span class="pts-label">pts total</span>
-    {#if weekPoints > 0}
-      <span class="pts-week">+{weekPoints} this week</span>
+    <span class="pts-total">{points}</span>
+    <span class="pts-label">{unit}</span>
+    {#if showAllTime}
+      <span class="pts-week">{allTime} all time</span>
     {/if}
   </div>
 </div>
@@ -60,35 +66,34 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 700;
     flex-shrink: 0;
   }
 
   .info {
     flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
+    min-width: 0;
   }
 
   .name {
     font-size: 15px;
     font-weight: 600;
     color: #111827;
+    display: block;
   }
 
   .streaks {
     display: flex;
-    gap: 6px;
     flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 3px;
   }
 
   .streak-badge {
     font-size: 11px;
-    font-weight: 500;
-    padding: 2px 6px;
-    border-radius: 8px;
+    padding: 1px 6px;
+    border-radius: 6px;
   }
 
   .current {
@@ -105,22 +110,24 @@
     display: flex;
     flex-direction: column;
     align-items: flex-end;
+    flex-shrink: 0;
   }
 
   .pts-total {
-    font-size: 22px;
-    font-weight: 800;
-    color: #16a34a;
+    font-size: 20px;
+    font-weight: 700;
+    color: #111827;
+    line-height: 1.1;
   }
 
   .pts-label {
-    font-size: 10px;
+    font-size: 11px;
     color: #9ca3af;
   }
 
   .pts-week {
     font-size: 11px;
-    color: #16a34a;
-    font-weight: 500;
+    color: #9ca3af;
+    margin-top: 2px;
   }
 </style>

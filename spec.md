@@ -29,7 +29,7 @@ One spreadsheet, three tabs.
 | color | string | hex color for UI avatar/badges |
 | fcm_token | string | set on first push-permission grant; may be blank |
 | points_total | number | running total, updated on completion |
-| streak_current | number | consecutive days with all assigned chores **accepted** |
+| streak_current | number | consecutive days on which every assigned chore was *resolved* — `done`, `skipped` (excused or missed), or `pending_review`. Pending counts because the assignee finished on time and the delay is the reviewer's; a later rejection calls `recomputeStreak` to take the credit back. |
 | streak_best | number | best streak ever, for bragging rights |
 | **is_admin** | boolean | parent/admin flag. Gates admin-only actions (reassign, bump, approve, reject) and the "needs review" view. Enforced client-side only — see §6 known limitations. |
 
@@ -60,7 +60,7 @@ which are logged via the audit columns.
 | chore_id | string | FK to Chores |
 | person_id | string (nullable) | null = unassigned, claimable by anyone |
 | due_date | date | |
-| status | enum | `open`, **`pending_review`**, `done`, `skipped`, **`rejected`** |
+| status | enum | `open`, **`pending_review`**, `done`, `skipped`, **`rejected`**. `skipped` covers both a missed occurrence closed by the nightly roll-forward (which records a negative `points_awarded`) and one an admin deliberately excused (which records none) — the points tell them apart. |
 | completed_at | datetime | set when a person marks the chore done (kid or admin) — blank until then. For rejected-then-redone chores, this is cleared again on reject. |
 | assigned_by | enum | `auto` (nightly generator) or `manual` (a parent) |
 | points_awarded | number | snapshot of points at **acceptance** (in case chore points change later). Blank while `pending_review`. |

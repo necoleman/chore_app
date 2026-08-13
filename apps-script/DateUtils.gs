@@ -101,6 +101,33 @@ function recurrencePeriodDays(chore) {
   }
 }
 
+// The chore's true cadence in days, used ONLY for grouping and ordering the
+// Today screen (#38). Deliberately separate from `recurrencePeriodDays` above:
+// that one reports a flat 7 for `custom` because it feeds the lead-window clamp,
+// where treating M/W/F as a 2-day cycle would squash the lead window. Here we
+// want the real cadence, so a thrice-weekly chore sorts above a weekly one.
+//
+// Not consulted for one-offs — manual assignments and `once` chores bypass
+// cadence grouping entirely.
+function sortPeriodDays(chore) {
+  switch (chore.frequency) {
+    case 'daily':
+      return 1;
+    case 'custom':
+      var days = String(chore.custom_days || '')
+        .split(',').map(function(s) { return s.trim(); }).filter(Boolean).length;
+      return days > 0 ? 7 / days : 7;
+    case 'weekly':
+      return 7;
+    case 'monthly':
+      return 28;
+    case 'interval':
+      return parseInt(chore.interval_days, 10) || 7;
+    default:
+      return 1;
+  }
+}
+
 // The lead window (#23): how many days the chore is visible before it goes
 // overdue, so it appears `lead − 1` days before its due date. Rules: at least 1,
 // strictly less than the recurrence interval, and **defaults to 1** (early

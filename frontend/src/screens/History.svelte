@@ -41,18 +41,27 @@
 
   $: sortedDates = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
 
-  function statusColor(status) {
-    if (status === 'done') return '#16a34a';
-    if (status === 'skipped') return '#9ca3af';
-    if (status === 'rejected') return '#dc2626';
+  // A closed-unfinished occurrence is recorded as `skipped` either way; the
+  // points tell them apart (#38). An automatic miss records the deduction as a
+  // negative `points_awarded`; an admin excusing a chore deducts nothing and
+  // stamps who did it.
+  const wasMissed = (item) => item.status === 'skipped' && (item.points_awarded ?? 0) < 0;
+
+  function statusColor(item) {
+    if (item.status === 'done') return '#16a34a';
+    if (item.status === 'skipped') return wasMissed(item) ? '#b45309' : '#9ca3af';
+    if (item.status === 'rejected') return '#dc2626';
     return '#6b7280';
   }
 
-  function statusLabel(status) {
-    if (status === 'done') return '✓ Done';
-    if (status === 'skipped') return '– Skipped';
-    if (status === 'rejected') return '✗ Rejected';
-    return status;
+  function statusLabel(item) {
+    if (item.status === 'done') return '✓ Done';
+    if (item.status === 'skipped') {
+      if (wasMissed(item)) return `✗ Missed ${item.points_awarded}`;
+      return item.reviewer_name ? `– Skipped by ${item.reviewer_name}` : '– Skipped';
+    }
+    if (item.status === 'rejected') return '✗ Rejected';
+    return item.status;
   }
 </script>
 
@@ -81,7 +90,7 @@
         <h2 class="date-heading">{date}</h2>
         {#each grouped[date] as item (item.assignment_id)}
           <div class="history-row">
-            <span class="status-dot" style="background:{statusColor(item.status)}"></span>
+            <span class="status-dot" style="background:{statusColor(item)}"></span>
             <div class="row-info">
               <span class="chore-name">{item.chore_name}</span>
               {#if item.person_name}
@@ -92,10 +101,12 @@
               {/if}
             </div>
             <div class="row-right">
-              <span class="status-label" style="color:{statusColor(item.status)}">
-                {statusLabel(item.status)}
+              <span class="status-label" style="color:{statusColor(item)}">
+                {statusLabel(item)}
               </span>
-              {#if item.points_awarded}
+              <!-- Only positive awards get a chip; a miss already shows its
+                   deduction in the status label, and "+-3" would be nonsense. -->
+              {#if item.points_awarded > 0}
                 <span class="points">+{item.points_awarded}</span>
               {/if}
             </div>

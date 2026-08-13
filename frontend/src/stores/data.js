@@ -111,15 +111,36 @@ export async function uncompleteAssignment(assignment_id) {
   }
 }
 
-export async function skipAssignment(assignment_id) {
+// Excuse a chore: closes the occurrence with no points deducted, recording who
+// excused it. Any admin can skip any chore — their own, someone else's, or an
+// unclaimed one. For a recurring chore the next occurrence still arrives on
+// schedule; for a one-off there is no next occurrence, so this is simply how you
+// clear an ad-hoc request you've changed your mind about.
+export async function skipAssignment(assignment_id, admin_person_id) {
   const prev = getAssignment(assignment_id);
   updateAssignment(assignment_id, { status: 'skipped', _optimistic: true });
   try {
-    await post('skip', { assignment_id });
+    await post('skip', { assignment_id, admin_person_id });
     updateAssignment(assignment_id, { _optimistic: false });
   } catch (e) {
     rollbackAssignment(assignment_id, prev);
     showToast('Could not skip — try again');
+  }
+}
+
+// Create an extra assignment of an existing chore, due today (#39). Used by the
+// "Add" button on each Manage Chores row. The assignment sits outside the
+// recurrence — the generator never rolls it forward or penalizes it — so the
+// chore's own schedule is untouched.
+export async function assignChoreToday(chore_id, person_id) {
+  try {
+    await post('assign', { chore_id, person_id: person_id || '' });
+    await refresh();
+    showToast('Added to today', 'success');
+    return true;
+  } catch (e) {
+    showToast(e.message || 'Could not add — try again');
+    return false;
   }
 }
 

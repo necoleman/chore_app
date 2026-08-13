@@ -2,8 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { assignments, people, isRefreshing, lastUpdated, startPolling, stopPolling, quickAddChore } from '../stores/data.js';
   import { currentUser } from '../stores/user.js';
-  import ChoreCard from '../components/ChoreCard.svelte';
-  import AssignmentSegments from '../components/AssignmentSegments.svelte';
+  import ChoreGroups from '../components/ChoreGroups.svelte';
   import QuickAddChore from '../components/QuickAddChore.svelte';
   import NeedsReviewSection from '../components/NeedsReviewSection.svelte';
   import { relativeTime, today } from '../lib/utils.js';
@@ -13,22 +12,35 @@
   $: isAdmin = $currentUser?.is_admin;
   $: todayStr = today();
 
-  let sortMode = 'default'; // default | due | frequency
+  // 'frequency' is gone — cadence grouping supersedes it.
+  let sortMode = 'default'; // default | due
 
-  // All Today-screen filtering/sorting/grouping lives in the pure selector
+  // All Today-screen filtering/grouping/sorting lives in the pure selector
   // (unit-tested in lib/choreSelectors.test.js).
   $: sections = splitTodaySections($assignments, $currentUser, isAdmin, todayStr, sortMode);
   $: pendingReview = sections.pendingReview;
-  $: myAssignments = sections.mine;
+  $: myGroups = sections.mine;
+  $: myCount = myGroups.reduce((n, g) => n + g.items.length, 0);
   $: familyGroups = sections.familyGroups;
-  $: familyCount = familyGroups.reduce((n, g) => n + g.items.length, 0);
   $: unassigned = sections.unassigned;
 
   let showQuickAdd = false;
 
-  // Remember whether the Family dropdown was left open (#28 follow-up).
-  let familyOpen = loadOpen('family', false);
-  $: saveOpen('family', familyOpen);
+  // Person-level folds are the only ones that survive: they answer "whose chores
+  // am I looking at", which is a different question from the cadence groups.
+  // Mine open by default, family closed.
+  let mineOpen = loadOpen('mine', true);
+  $: saveOpen('mine', mineOpen);
+
+  let familyOpen = {};
+  function isFamilyOpen(personId) {
+    if (!(personId in familyOpen)) familyOpen[personId] = loadOpen(`fam:${personId}`, false);
+    return familyOpen[personId];
+  }
+  function toggleFamily(personId, open) {
+    familyOpen[personId] = open;
+    saveOpen(`fam:${personId}`, open);
+  }
 
   onMount(() => startPolling());
   onDestroy(() => stopPolling());
@@ -61,7 +73,6 @@
     <select class="sort" bind:value={sortMode} aria-label="Sort chores">
       <option value="default">Sort: Default</option>
       <option value="due">Sort: Due date</option>
-      <option value="frequency">Sort: Frequency</option>
     </select>
   </div>
 
@@ -70,40 +81,44 @@
 
   <!-- My chores -->
   <section class="section">
-    <h2 class="section-title">My Chores</h2>
-    {#if myAssignments.length === 0}
-      <p class="empty">All done! 🎉</p>
-    {:else}
-      <AssignmentSegments items={myAssignments} {todayStr} showAdminControls={isAdmin} storeKey="mine" />
-    {/if}
+    <details class="fold" bind:open={mineOpen}>
+      <summary class="fold-summary">
+        <span class="section-title">My chores</span>
+        <span class="fold-count">{myCount} {myCount === 1 ? 'chore' : 'chores'}</span>
+      </summary>
+      {#if myGroups.length === 0}
+        <p class="empty">All done! 🎉</p>
+      {:else}
+        <ChoreGroups groups={myGroups} showAdminControls={isAdmin} />
+      {/if}
+    </details>
   </section>
 
-  <!-- Family's chores — collapsed into a single dropdown by default (#26) so
-       each user sees only their own + unclaimed chores at a glance. -->
+  <!-- One dropdown per family member, so you can open just the person you want -->
   {#if familyGroups.length > 0}
     <section class="section">
-      <details class="family-details" bind:open={familyOpen}>
-        <summary class="family-summary">
-          <span class="section-title family-heading">Family</span>
-          <span class="family-count">{familyCount} {familyCount === 1 ? 'chore' : 'chores'}</span>
-        </summary>
-        {#each familyGroups as group}
-          <div class="family-group">
-            <span class="family-name">{group.name}</span>
-            <AssignmentSegments items={group.items} {todayStr} showAdminControls={isAdmin} readonly={true} storeKey={`fam:${group.person_id}`} />
-          </div>
-        {/each}
-      </details>
+      <h2 class="section-title">Family</h2>
+      {#each familyGroups as person (person.person_id)}
+        <details
+          class="fold"
+          open={isFamilyOpen(person.person_id)}
+          on:toggle={(e) => toggleFamily(person.person_id, e.currentTarget.open)}
+        >
+          <summary class="fold-summary">
+            <span class="fold-name">{person.name}</span>
+            <span class="fold-count">{person.count} {person.count === 1 ? 'chore' : 'chores'}</span>
+          </summary>
+          <ChoreGroups groups={person.groups} showAdminControls={isAdmin} readonly={true} />
+        </details>
+      {/each}
     </section>
   {/if}
 
   <!-- Unassigned / claimable -->
   {#if unassigned.length > 0}
     <section class="section">
-      <h2 class="section-title">Available to Claim</h2>
-      {#each unassigned as a (a.assignment_id)}
-        <ChoreCard assignment={a} showAdminControls={isAdmin} />
-      {/each}
+      <h2 class="section-title">Available to claim</h2>
+      <ChoreGroups groups={unassigned} showAdminControls={isAdmin} />
     </section>
   {/if}
 </div>
@@ -206,6 +221,7 @@
     letter-spacing: 0.05em;
     color: #9ca3af;
     padding: 12px 0 8px;
+    display: block;
   }
 
   .empty {
@@ -215,26 +231,26 @@
     padding: 20px 0;
   }
 
-  .family-details {
-    margin-bottom: 8px;
+  .fold {
+    margin-bottom: 4px;
   }
 
-  .family-summary {
+  .fold-summary {
     display: flex;
     align-items: center;
     gap: 8px;
     cursor: pointer;
     list-style: none;
-    padding: 12px 0 8px;
+    padding: 8px 0;
     user-select: none;
   }
 
-  .family-summary::-webkit-details-marker {
+  .fold-summary::-webkit-details-marker {
     display: none;
   }
 
-  /* Caret that rotates when the dropdown is open. */
-  .family-summary::before {
+  /* Caret that rotates when the fold is open. */
+  .fold-summary::before {
     content: '';
     width: 6px;
     height: 6px;
@@ -242,35 +258,26 @@
     border-bottom: 2px solid #9ca3af;
     transform: rotate(-45deg);
     transition: transform 0.15s ease;
+    flex: none;
   }
 
-  .family-details[open] .family-summary::before {
+  .fold[open] .fold-summary::before {
     transform: rotate(45deg);
   }
 
-  .family-heading {
+  .fold-summary .section-title {
     padding: 0;
   }
 
-  .family-count {
+  .fold-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: #374151;
+  }
+
+  .fold-count {
     font-size: 12px;
     font-weight: 600;
     color: #9ca3af;
-  }
-
-  .family-group {
-    margin-bottom: 12px;
-  }
-
-  .family-group:first-of-type {
-    margin-top: 4px;
-  }
-
-  .family-name {
-    font-size: 12px;
-    font-weight: 600;
-    color: #374151;
-    display: block;
-    margin-bottom: 4px;
   }
 </style>

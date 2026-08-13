@@ -17,20 +17,29 @@ function runNightlyGenerator() {
   Logger.log('Nightly generator done for ' + formatDate(today));
 }
 
-// ─── Single-chore generation / carry-over ─────────────────────────────────────
+// ─── Single-chore generation / roll-forward ───────────────────────────────────
 //
-// Surfaces (or carries over) one chore's assignment. Shared by the nightly
-// generator and by add/update-chore (#17). Handles lead-time early appearance
-// (#23) and the missed-chore collapse + points penalty (#21):
+// Surfaces one chore's next occurrence. Shared by the nightly generator and by
+// add/update-chore (#17).
 //
-//   • Nothing happens until today reaches the next occurrence's appear date
+// A chore is represented by exactly ONE live occurrence at a time, which rolls
+// forward on schedule (#35/#38):
+//
+//   • Nothing happens until today reaches the occurrence's appear date
 //     (due − (leadDays − 1)), or its start_date.
 //   • If that occurrence already has an assignment, we only advance the anchor.
-//   • If a PRIOR occurrence is still open when the next one appears, we DON'T
-//     create a second row — we deduct the chore's points from the assignee
-//     (once per recurrence), bump `missed_count`, and advance the anchor.
-//   • Otherwise we create the assignment with due_date = the real due date
-//     (which may be in the future during the lead window).
+//   • If a PRIOR occurrence is still open when the next one appears, it is
+//     CLOSED as missed — its assignee loses the chore's points (recorded on the
+//     row as a negative `points_awarded` so History can tell a miss from an
+//     excusal) — and the fresh occurrence inherits `missed_count + 1`.
+//   • A prior occurrence in `pending_review` is left alone: the work was done and
+//     is awaiting a parent, so there is nothing to penalize. The next occurrence
+//     is created alongside it, carrying the miss count unchanged.
+//
+// This replaces the v1.3.0 rollover collapse and the v1.7.0 `recur_mode` recreate
+// stack. Neither survives: rollover left the prior open and created nothing,
+// recreate left it open AND stacked. The roll-forward closes it and replaces it,
+// so a missed occurrence's due date is never frozen in the past.
 //
 // `allAssignments` is the current Assignments rows (mutated in place so repeat
 // calls in the same run dedupe). `people` is the People rows (for the penalty).
@@ -50,7 +59,13 @@ function processChoreGeneration(chore, today, allAssignments, people) {
   if (formatDate(today) < formatDate(appearDate)) return null;
 
   var nextDueISO = formatDate(nextDue);
-  var mine = allAssignments.filter(function(a) { return a.chore_id === chore.chore_id; });
+
+  // Only AUTO occurrences participate in the recurrence. Manual one-offs from the
+  // "Add" button live outside it entirely (#39) — they are never closed, rolled
+  // forward, penalized, or counted toward the chore's miss streak.
+  var mine = allAssignments.filter(function(a) {
+    return a.chore_id === chore.chore_id && a.assigned_by !== 'manual';
+  });
 
   // Already have this occurrence — just record the anchor and stop.
   var existing = mine.find(function(a) { return a.due_date === nextDueISO; });
@@ -61,52 +76,25 @@ function processChoreGeneration(chore, today, allAssignments, people) {
 
   // Resolve who gets this occurrence — rotating through `default_assignee` when
   // it holds a comma-delimited list (#24), skipping anyone on vacation (#29).
+  // A sole assignee on vacation resolves to '' and the occurrence generates as
+  // UNCLAIMED, so the rest of the family can pick it up. Unclaimed occurrences
+  // roll forward like any other but cost nobody points, which is what protects
+  // the vacationer — no pause guard is needed (this replaces #34).
   var assignee = resolveRotationAssignee(chore, people);
 
-  // Vacation pause (#34): a chore with default assignee(s) whose candidates are
-  // ALL on vacation resolves to '' here. Don't create a mid-vacation row and
-  // don't penalize/inflate missed_count — just consume the occurrence (advance
-  // the anchor so dates don't pile up as past-dated rows on return). Genuinely
-  // unclaimed chores (no default_assignee) fall through and generate as normal.
-  var hasAssignees = String(chore.default_assignee || '')
-    .split(',').map(function(s) { return s.trim(); }).filter(Boolean).length > 0;
-  if (hasAssignees && assignee === '') {
-    stampLastGenerated(chore, nextDueISO);
-    return null;
+  // Close out the occurrence being superseded. `pending_review` is deliberately
+  // excluded: that work is done and awaiting review, so the next occurrence is
+  // created alongside it and the miss count carries unchanged.
+  var prior = mine.find(function(a) { return a.status === 'open' && a.due_date < nextDueISO; });
+  var carriedMisses = 0;
+  if (prior) {
+    carriedMisses = closeMissedOccurrence(chore, prior, people) ;
+  } else {
+    // No open prior — inherit the streak from the most recent closed occurrence
+    // so a run of misses keeps counting, and a completion resets it to 0.
+    carriedMisses = missesToCarry(mine, nextDueISO);
   }
 
-  // A prior occurrence is still open when the next one comes due. Either way the
-  // missed occurrence is penalized: its assignee loses the chore's points (once)
-  // and its `missed_count` is bumped (#21). The two modes differ in what happens
-  // to the assignment rows (#30):
-  //   • rollover (default): collapse — no new row is created; the single prior
-  //     assignment carries over as the outstanding overdue item.
-  //   • recreate: the prior stays open (overdue) AND a fresh occurrence is
-  //     stacked on top — e.g. dishes: last night's are still owed, tonight's are
-  //     also due — so we penalize the just-superseded occurrence and fall
-  //     through to create the new row.
-  var recurMode = String(chore.recur_mode || 'rollover');
-  var openPrior = mine.find(function(a) { return a.status === 'open' && a.due_date < nextDueISO; });
-  if (openPrior) {
-    if (recurMode === 'recreate') {
-      // Penalize the occurrence that just went overdue — the LATEST open prior,
-      // so each occurrence is penalized once as it's superseded (older ones were
-      // already penalized on their own night).
-      var superseded = mine
-        .filter(function(a) { return a.status === 'open' && a.due_date < nextDueISO; })
-        .reduce(function(latest, a) {
-          return (!latest || a.due_date > latest.due_date) ? a : latest;
-        }, null);
-      penalizeMissedOccurrence(chore, superseded, people);
-      // fall through — do NOT collapse; create the fresh occurrence below.
-    } else {
-      penalizeMissedOccurrence(chore, openPrior, people);
-      stampLastGenerated(chore, nextDueISO);
-      return null;
-    }
-  }
-
-  // Fresh occurrence — create the assignment (due_date may be in the future).
   var assignmentId = chore.chore_id + '_' + nextDueISO.replace(/-/g, '');
   appendRow('Assignments', {
     assignment_id: assignmentId,
@@ -115,6 +103,7 @@ function processChoreGeneration(chore, today, allAssignments, people) {
     due_date: nextDueISO,
     status: 'open',
     assigned_by: 'auto',
+    missed_count: carriedMisses || '',
   });
   // Reflect the new row locally so later calls in this run dedupe against it.
   allAssignments.push({
@@ -123,6 +112,8 @@ function processChoreGeneration(chore, today, allAssignments, people) {
     person_id: assignee,
     due_date: nextDueISO,
     status: 'open',
+    assigned_by: 'auto',
+    missed_count: carriedMisses,
   });
 
   var choreUpdates = { last_generated_date: nextDueISO };
@@ -139,6 +130,52 @@ function processChoreGeneration(chore, today, allAssignments, people) {
     sendAssignmentNotification(assignmentId, assignee);
   }
   return assignmentId;
+}
+
+// Close an occurrence that was never done: mark it `skipped`, deduct the chore's
+// points from its assignee (clamped ≥0 by incrementPoints) and record the
+// deduction on the row as a NEGATIVE `points_awarded`. That sign is what lets
+// History tell an automatic miss from an admin excusal, which records no points.
+//
+// Unclaimed occurrences cost nobody points — there is no owner to charge — but
+// they are still closed and still advance the miss streak, so a neglected chore
+// visibly accumulates.
+//
+// Returns the miss count the SUCCEEDING occurrence should carry.
+function closeMissedOccurrence(chore, assignment, people) {
+  var points = parseInt(chore.points, 10) || 0;
+  var updates = { status: 'skipped' };
+
+  if (points > 0 && assignment.person_id) {
+    incrementPoints(assignment.person_id, -points, people);
+    updates.points_awarded = -points;
+  }
+
+  updateRow('Assignments', 'assignment_id', assignment.assignment_id, updates);
+  assignment.status = 'skipped';
+
+  return (parseInt(assignment.missed_count, 10) || 0) + 1;
+}
+
+// The miss count a fresh occurrence should start from when no open prior was
+// closed. Looks at the most recent occurrence before `nextDueISO`:
+//   • completed (`done`) → 0, the streak is broken by doing the chore
+//   • closed unfinished (`skipped`, whether missed or excused) → its count + 1
+//   • still `pending_review` → its count unchanged; the work may yet be accepted,
+//     and `actionReject` applies the miss if it is sent back instead
+//   • nothing at all → 0
+function missesToCarry(mine, nextDueISO) {
+  var prev = mine
+    .filter(function(a) { return a.due_date < nextDueISO; })
+    .reduce(function(latest, a) {
+      return (!latest || a.due_date > latest.due_date) ? a : latest;
+    }, null);
+
+  if (!prev) return 0;
+  var count = parseInt(prev.missed_count, 10) || 0;
+  if (prev.status === 'done') return 0;
+  if (prev.status === 'pending_review') return count;
+  return count + 1;
 }
 
 // Resolve the assignee for a fresh occurrence, rotating through the chore's
@@ -180,20 +217,6 @@ function resolveRotationAssignee(chore, people) {
     if (!onVacation[cand]) return cand;
   }
   return ''; // everyone on vacation → unclaimed
-}
-
-// Deduct the chore's points from a missed occurrence's assignee (once, clamped
-// ≥0) and bump its `missed_count`. Shared by the rollover collapse and the
-// recreate stack (#21/#30). No-op for a null occurrence or an unassigned one.
-function penalizeMissedOccurrence(chore, assignment, people) {
-  if (!assignment) return;
-  var points = parseInt(chore.points, 10) || 0;
-  if (points > 0 && assignment.person_id) {
-    incrementPoints(assignment.person_id, -points, people);
-  }
-  var missed = (parseInt(assignment.missed_count, 10) || 0) + 1;
-  updateRow('Assignments', 'assignment_id', assignment.assignment_id, { missed_count: missed });
-  assignment.missed_count = missed;
 }
 
 // Advance the chore's occurrence anchor (idempotent).
