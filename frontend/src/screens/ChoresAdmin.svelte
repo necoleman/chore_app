@@ -26,7 +26,7 @@
   // the original date.
   const ADD_MODES = [
     { value: 'oneoff', label: 'One-off', hint: 'Extra, due today. Schedule unchanged.' },
-    { value: 'early', label: 'Assign early', hint: 'Surface next chore early. Keeps its due date.' },
+    { value: 'early', label: 'Surface early', hint: 'Show the next one now. Keeps its due date.' },
   ];
 
   // Daily chores get no choice: they're due today anyway, so there's nothing to

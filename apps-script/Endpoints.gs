@@ -72,7 +72,7 @@ function actionToday(params) {
 
 // The lead window the CLIENT should use for this assignment. Normally just the
 // chore's own `lead_days`, but an occurrence deliberately brought forward with
-// Add → "Assign early" (`auto_early`) keeps its real due date, so the chore's
+// Add → "Surface early" (`auto_early`) keeps its real due date, so the chore's
 // window would hide it until that date arrives — the row would exist and be
 // invisible. Widen it just enough to reach today, recomputed on every request so
 // it stays visible right through to the due date (#43).
