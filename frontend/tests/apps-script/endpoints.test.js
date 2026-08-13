@@ -810,65 +810,80 @@ describe('a stranded prior is closed even when the current occurrence exists', (
   });
 });
 
-describe('one-off "doing it early" consumes the next occurrence (#43)', () => {
+describe('Add: one-off vs assign-early (#43)', () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 7, 3, 12, 0, 0)); }); // Aug 3
   afterEach(() => vi.useRealTimers());
 
   const monthly = () => ({
     People: [{ person_id: 'kid', points_total: 0 }],
-    Chores: [{ chore_id: 'c1', frequency: 'monthly', monthly_day: '15', points: 5,
-               active: 'TRUE', last_generated_date: '2026-07-15' }],
+    Chores: [{ chore_id: 'c1', frequency: 'monthly', monthly_day: '25', points: 5,
+               active: 'TRUE', last_generated_date: '2026-07-25' }],
   });
 
-  it('marks the assignment manual_replaces when created as "doing it early"', () => {
+  it('one-off creates an EXTRA due today, leaving the schedule untouched', () => {
     const { ctx, read } = loadBackend(monthly());
-    ctx.actionAssign({ chore_id: 'c1', person_id: 'kid', replaces_cycle: true });
-    expect(read('Assignments')[0].assigned_by).toBe('manual_replaces');
+    ctx.actionAssign({ chore_id: 'c1', person_id: 'kid' });
+    const row = read('Assignments')[0];
+    expect(row.due_date).toBe('2026-08-03');
+    expect(row.assigned_by).toBe('manual');
+    expect(read('Chores')[0].last_generated_date).toBe('2026-07-25'); // cursor untouched
   });
 
-  it('completing it pushes the schedule to the following cycle', () => {
+  it('early surfaces the REAL next occurrence, keeping its true due date', () => {
     const { ctx, read } = loadBackend(monthly());
-    const id = ctx.actionAssign({ chore_id: 'c1', person_id: 'kid', replaces_cycle: true }).assignment_id;
+    ctx.actionAssign({ chore_id: 'c1', person_id: 'kid', mode: 'early' });
+    const row = read('Assignments')[0];
+    expect(row.due_date).toBe('2026-08-25');    // not today — it is that occurrence
+    expect(row.assigned_by).toBe('auto_early');
+    // Bringing it forward consumes the slot, so the chore CANNOT re-trigger on
+    // the 25th — the September occurrence is next.
+    expect(read('Chores')[0].last_generated_date).toBe('2026-08-25');
+  });
+
+  it('an early occurrence done on the 3rd does not re-trigger on the 25th', () => {
+    const { ctx, read } = loadBackend(monthly());
+    const id = ctx.actionAssign({ chore_id: 'c1', person_id: 'kid', mode: 'early' }).assignment_id;
     ctx.actionComplete({ assignment_id: id, person_id: 'kid' });
-    // Aug 15 is now consumed, so the next occurrence is September's.
-    expect(read('Chores')[0].last_generated_date).toBe('2026-08-15');
+
+    vi.setSystemTime(new Date(2026, 7, 25, 0, 5, 0)); // the original due date
+    ctx.runNightlyGenerator();
+
+    const rows = read('Assignments');
+    expect(rows).toHaveLength(1);                 // nothing new appeared
+    expect(rows[0].status).toBe('done');
     expect(read('People')[0].points_total).toBe(5);
   });
 
-  it('an "extra" one-off leaves the schedule alone', () => {
+  it('the generator does not duplicate an occurrence already brought forward', () => {
     const { ctx, read } = loadBackend(monthly());
-    const id = ctx.actionAssign({ chore_id: 'c1', person_id: 'kid' }).assignment_id;
-    ctx.actionComplete({ assignment_id: id, person_id: 'kid' });
-    expect(read('Chores')[0].last_generated_date).toBe('2026-07-15'); // untouched
-    expect(read('People')[0].points_total).toBe(5);                   // still paid
+    ctx.actionAssign({ chore_id: 'c1', person_id: 'kid', mode: 'early' });
+    vi.setSystemTime(new Date(2026, 7, 25, 0, 5, 0));
+    ctx.runNightlyGenerator();
+    expect(read('Assignments')).toHaveLength(1);
   });
 
-  it('skipping a "doing it early" one-off leaves the schedule alone', () => {
-    // Changing your mind must be free — only completing consumes the cycle.
-    const { ctx, read } = loadBackend(monthly());
-    const id = ctx.actionAssign({ chore_id: 'c1', person_id: 'kid', replaces_cycle: true }).assignment_id;
-    ctx.actionSkip({ assignment_id: id, admin_person_id: 'kid' });
-    expect(read('Chores')[0].last_generated_date).toBe('2026-07-15');
+  it('refuses to bring forward an occurrence that already exists', () => {
+    const { ctx } = loadBackend(monthly());
+    ctx.actionAssign({ chore_id: 'c1', person_id: 'kid', mode: 'early' });
+    expect(() => ctx.actionAssign({ chore_id: 'c1', person_id: 'kid', mode: 'early' }))
+      .toThrow(/already on the list/);
   });
 
-  it('daily chores are unaffected — an extra effort today buys no day off', () => {
-    const { ctx, read } = loadBackend({
-      People: [{ person_id: 'kid', points_total: 0 }],
-      Chores: [{ chore_id: 'c1', frequency: 'daily', points: 2, active: 'TRUE',
-                 last_generated_date: '2026-08-03' }],
-    });
-    const id = ctx.actionAssign({ chore_id: 'c1', person_id: 'kid', replaces_cycle: true }).assignment_id;
-    ctx.actionComplete({ assignment_id: id, person_id: 'kid' });
-    expect(read('Chores')[0].last_generated_date).toBe('2026-08-03');
-  });
-
-  it('both flavours stay outside the recurrence', () => {
+  it('an early occurrence is treated as part of the recurrence, not a one-off', () => {
     const { ctx } = loadBackend();
+    expect(ctx.isOneOffAssignment({ assigned_by: 'auto_early' })).toBe(false);
     expect(ctx.isOneOffAssignment({ assigned_by: 'manual' })).toBe(true);
-    expect(ctx.isOneOffAssignment({ assigned_by: 'manual_replaces' })).toBe(true);
     expect(ctx.isOneOffAssignment({ assigned_by: 'auto' })).toBe(false);
-    // A blank assigned_by (hand-added sheet row) counts as part of the
-    // recurrence — the safer default.
-    expect(ctx.isOneOffAssignment({})).toBe(false);
+    expect(ctx.isOneOffAssignment({})).toBe(false); // blank: safer as part of the recurrence
+  });
+
+  it('widens the visible lead window so an early occurrence actually shows', () => {
+    // Without this the row exists but the Today filter hides it until its real
+    // appear date — created and invisible.
+    const { ctx } = loadBackend(monthly());
+    ctx.actionAssign({ chore_id: 'c1', person_id: 'kid', mode: 'early' });
+    const card = ctx.actionToday({}).assignments[0];
+    expect(card.due_date).toBe('2026-08-25');
+    expect(card.lead_days).toBe(23);   // Aug 3 .. Aug 25 inclusive
   });
 });

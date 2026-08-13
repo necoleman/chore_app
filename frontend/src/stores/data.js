@@ -131,14 +131,16 @@ export async function skipAssignment(assignment_id, admin_person_id) {
 // Create an extra assignment of an existing chore, due today (#39). Used by the
 // "Add" button on each Manage Chores row. The assignment sits outside the
 // recurrence — the generator never rolls it forward or penalizes it — so the
-// chore's own schedule is untouched — unless it was created as "doing it early"
-// (`replaces_cycle`), in which case completing it consumes the upcoming
-// occurrence. Skipping it never touches the schedule either way.
-export async function assignChoreToday(chore_id, person_id, replaces_cycle = false) {
+// chore's own schedule is untouched.
+//
+// `mode: 'early'` instead surfaces the chore's REAL next occurrence ahead of its
+// appear date, keeping its true due date — the same effect as granting that one
+// occurrence extra lead days. It's an ordinary auto occurrence from then on.
+export async function assignChoreToday(chore_id, person_id, mode = 'oneoff') {
   try {
-    await post('assign', { chore_id, person_id: person_id || '', replaces_cycle });
+    const res = await post('assign', { chore_id, person_id: person_id || '', mode });
     await refresh();
-    showToast('Added to today', 'success');
+    showToast(res?.early ? 'Brought forward' : 'Added to today', 'success');
     return true;
   } catch (e) {
     showToast(e.message || 'Could not add — try again');

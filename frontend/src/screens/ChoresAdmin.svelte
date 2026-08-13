@@ -16,19 +16,32 @@
   let error = null;
   let editingChore = null;   // null = not editing, object = edit existing
   let assigningChore = null; // chore awaiting an assignee for a one-off today
-  let assignMode = 'extra';  // 'extra' | 'replace' — see ADD_MODES below
+  let assignMode = 'oneoff'; // 'oneoff' | 'early' — see ADD_MODES below
 
-  // Two intents behind the Add button (#43). Only completing tells them apart:
-  // 'replace' consumes the upcoming occurrence, 'extra' leaves the schedule
-  // alone. Skipping either is harmless, so changing your mind is free.
+  // Two intents behind the Add button (#43):
+  //   one-off — an extra due today, leaving the chore's schedule untouched
+  //   early   — the real next occurrence surfaced now, keeping its true due date
+  // "Early" is the same idea as granting that one occurrence extra lead days, and
+  // because bringing it forward consumes its slot, the chore can't re-trigger on
+  // the original date.
   const ADD_MODES = [
-    { value: 'extra', label: 'Extra', hint: 'On top of the schedule' },
-    { value: 'replace', label: 'Doing it early', hint: 'Covers the next scheduled one' },
+    { value: 'oneoff', label: 'One-off', hint: 'Extra, due today. Schedule unchanged.' },
+    { value: 'early', label: 'Assign early', hint: 'The next one, surfaced now. Keeps its due date.' },
   ];
 
-  // Daily chores are excluded from the choice: an extra effort today shouldn't
-  // buy a day off tomorrow, so they're always simply extra.
+  // Daily chores get no choice: they're due today anyway, so there's nothing to
+  // bring forward. Add still works as a plain one-off for them.
   $: addModes = assigningChore && assigningChore.frequency !== 'daily' ? ADD_MODES : null;
+
+  // Pre-select whoever would normally get this occurrence: the sole default, or
+  // for a rotation the person whose turn is genuinely next. Choosing someone else
+  // only writes the assignment row — the chore's own default is never touched.
+  function defaultAssigneeFor(c) {
+    const list = String(c?.default_assignee || '').split(',').map((x) => x.trim()).filter(Boolean);
+    if (list.length === 0) return '';
+    if (list.length === 1) return list[0];
+    return list[(list.indexOf(c.rotation_last) + 1) % list.length];
+  }
   let showAddForm = false;
   let addInitialName = '';    // prefill the new-chore form (from search)
   let searchTerm = '';
@@ -271,19 +284,19 @@
 {#if assigningChore}
   <PersonPicker
     {people}
-    selected={''}
+    selected={defaultAssigneeFor(assigningChore)}
     allowUnassigned={true}
-    title="Create assignment due today"
+    title="Add this chore"
     modes={addModes}
     bind:selectedMode={assignMode}
     onSelect={async (person) => {
       const target = assigningChore;
-      const replaces = addModes !== null && assignMode === 'replace';
+      const mode = addModes === null ? 'oneoff' : assignMode;
       assigningChore = null;
-      assignMode = 'extra';
-      await assignChoreToday(target.chore_id, person?.person_id ?? '', replaces);
+      assignMode = 'oneoff';
+      await assignChoreToday(target.chore_id, person?.person_id ?? '', mode);
     }}
-    onClose={() => { assigningChore = null; assignMode = 'extra'; }}
+    onClose={() => { assigningChore = null; assignMode = 'oneoff'; }}
   />
 {/if}
 

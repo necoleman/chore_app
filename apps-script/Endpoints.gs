@@ -43,7 +43,7 @@ function actionToday(params) {
       location:         chore.location || '',
       description:      chore.description || '',
       frequency:        chore.frequency || '',
-      lead_days:        chore.name ? effectiveLeadDays(chore) : '',
+      lead_days:        visibleLeadDays(chore, a, today),
       // Cadence in days, for the Today screen's grouping/ordering (#38).
       period_days:      chore.name ? sortPeriodDays(chore) : 1,
       // Sinks to the end of its cadence group, e.g. after-dinner chores (#40).
@@ -68,6 +68,23 @@ function actionToday(params) {
   });
 
   return { assignments: result, people: people };
+}
+
+// The lead window the CLIENT should use for this assignment. Normally just the
+// chore's own `lead_days`, but an occurrence deliberately brought forward with
+// Add → "Assign early" (`auto_early`) keeps its real due date, so the chore's
+// window would hide it until that date arrives — the row would exist and be
+// invisible. Widen it just enough to reach today, recomputed on every request so
+// it stays visible right through to the due date (#43).
+function visibleLeadDays(chore, a, todayISO) {
+  var base = chore.name ? effectiveLeadDays(chore) : '';
+  if (a.assigned_by !== 'auto_early') return base;
+
+  var due = String(a.due_date || '').slice(0, 10);
+  if (!due) return base;
+  var daysUntil = daysBetween(parseISODate(due), parseISODate(todayISO));
+  if (daysUntil <= 0) return base; // already due — the normal window applies
+  return Math.max(parseInt(base, 10) || 1, daysUntil + 1);
 }
 
 function getWeekStart() {
@@ -276,7 +293,6 @@ function actionComplete(body) {
     });
     incrementPoints(personId, points, people);
     anchorIntervalOnCompletion(assignment.chore_id, todayStr());
-    if (assignment.assigned_by === 'manual_replaces') consumeNextOccurrence(assignment.chore_id);
     invalidateCache('Assignments');
     invalidateCache('People');
     return { status: 'done', completed_at: now, points_awarded: points };
@@ -328,7 +344,6 @@ function actionApprove(body) {
     assignment.chore_id,
     String(assignment.completed_at || '').slice(0, 10) || todayStr()
   );
-  if (assignment.assigned_by === 'manual_replaces') consumeNextOccurrence(assignment.chore_id);
 
   invalidateCache('Assignments');
   return { status: 'done', points_awarded: points, reviewed_at: now };
@@ -523,18 +538,66 @@ function actionClaim(body) {
 
 // ─── POST: assign (manual assignment creation) ────────────────────────────────
 
-// `replaces_cycle` records the intent chosen when the assignment was created
-// (#43): an EXTRA on top of the schedule, or one being done EARLY instead of the
-// next scheduled occurrence. The distinction only matters on completion —
-// `manual_replaces` consumes the upcoming occurrence, plain `manual` doesn't —
-// so skipping either one leaves the schedule untouched, which is what makes
-// changing your mind free.
+// Two intents behind the Manage Chores "Add" button (#43):
+//
+//   • **one-off** (default) — an EXTRA, due today, on top of the schedule. Marked
+//     `manual`, so it sits outside the recurrence entirely: never rolled forward,
+//     penalized, or counted toward the chore's miss streak, and the chore's own
+//     dates are untouched.
+//
+//   • **early** — the chore's genuine next occurrence, surfaced ahead of its
+//     appear date with its REAL due date intact. Equivalent to granting that one
+//     occurrence extra lead days. Marked `auto_early` so the Today filter widens
+//     its window enough to show it; everything else treats it as the ordinary
+//     auto occurrence it is.
+//
+// Bringing an occurrence forward stamps the cursor to its due date — the same
+// thing the generator does when it creates one. That's what makes "done early"
+// safe: the slot is consumed, so the chore cannot re-trigger on its original
+// date, and the occurrence AFTER it becomes next. No completion-time special
+// case is needed, because it is simply an occurrence.
 function actionAssign(body) {
   var choreId = body.chore_id;
   var personId = body.person_id || '';
-  var dueDate = body.due_date || todayStr();
-  var replaces = body.replaces_cycle === true || body.replaces_cycle === 'true';
 
+  if (body.mode === 'early') {
+    var chore = getRows('Chores').find(function(c) { return c.chore_id === choreId; });
+    if (!chore) throw new Error('No Chores row for chore_id: ' + choreId);
+
+    var next = nextDueForChore(chore, new Date());
+    if (!next) throw new Error('This chore has no next occurrence to bring forward');
+    var dueISO = formatDate(next);
+
+    var already = getRows('Assignments').find(function(a) {
+      return a.chore_id === choreId
+        && String(a.due_date || '').slice(0, 10) === dueISO
+        && !isOneOffAssignment(a);
+    });
+    if (already) throw new Error('That occurrence is already on the list');
+
+    var earlyId = choreId + '_' + dueISO.replace(/-/g, '');
+    appendRow('Assignments', {
+      assignment_id: earlyId,
+      chore_id: choreId,
+      person_id: personId,
+      due_date: dueISO,
+      status: 'open',
+      assigned_by: 'auto_early',
+    });
+
+    var updates = { last_generated_date: dueISO };
+    // Advance the rotation pointer as the generator would, so the sequence
+    // doesn't hand the next occurrence to the same person again.
+    if (personId) updates.rotation_last = personId;
+    updateRow('Chores', 'chore_id', choreId, updates);
+
+    invalidateCache('Assignments');
+    invalidateCache('Chores');
+    if (personId) sendAssignmentNotification(earlyId, personId);
+    return { assignment_id: earlyId, due_date: dueISO, early: true, success: true };
+  }
+
+  var dueDate = body.due_date || todayStr();
   var assignmentId = choreId + '_' + dueDate.replace(/-/g, '') + '_' + generateId('m').slice(-6);
   appendRow('Assignments', {
     assignment_id: assignmentId,
@@ -542,10 +605,10 @@ function actionAssign(body) {
     person_id: personId,
     due_date: dueDate,
     status: 'open',
-    assigned_by: replaces ? 'manual_replaces' : 'manual',
+    assigned_by: 'manual',
   });
   invalidateCache('Assignments');
-  return { assignment_id: assignmentId, success: true };
+  return { assignment_id: assignmentId, due_date: dueDate, success: true };
 }
 
 // ─── POST: reassign ───────────────────────────────────────────────────────────
@@ -822,31 +885,6 @@ function actionResetRotation(body) {
 // safer default.
 function isOneOffAssignment(a) {
   return String(a.assigned_by || '').indexOf('manual') === 0;
-}
-
-// Completing a one-off that was created as "instead of the next scheduled one"
-// consumes that occurrence, so the chore doesn't come round again immediately
-// after someone has just done it (#43).
-//
-// Daily chores are excluded: an extra effort today shouldn't buy a day off
-// tomorrow. Interval chores are already handled by anchorIntervalOnCompletion,
-// which re-anchors to the completion date — the same "cycle satisfied" outcome
-// by a different route. So only the calendar cadences need this.
-//
-// Known edge: if the upcoming occurrence already has a live row (possible when
-// `lead_days` is large), that row is left in place and would need completing or
-// skipping separately. In practice the chore is already on the list in that
-// window, so there's no reason to reach for Add at all.
-function consumeNextOccurrence(choreId) {
-  var chore = getRows('Chores').find(function(c) { return c.chore_id === choreId; });
-  if (!chore) return;
-  var freq = chore.frequency;
-  if (freq !== 'weekly' && freq !== 'custom' && freq !== 'monthly') return;
-
-  var next = nextDueForChore(chore, new Date());
-  if (!next) return;
-  stampLastGenerated(chore, formatDate(next));
-  invalidateCache('Chores');
 }
 
 function liveOccurrence(choreId, excludeAssignmentId) {
