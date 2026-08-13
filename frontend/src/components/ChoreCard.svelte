@@ -60,11 +60,13 @@
   // The frequency chip reads "one-off" rather than the underlying chore's
   // cadence: on this card, "weekly" would describe the chore but not the
   // assignment in front of you.
+  // "x180 days" rather than "every 180 days" — short enough to stay on one line
+  // alongside the points and location chips.
   $: freqLabel =
     groupKey === 'oneoff'
       ? 'one-off'
       : assignment.frequency === 'interval'
-        ? `every ${assignment.period_days} days`
+        ? `x${assignment.period_days} days`
         : assignment.frequency;
 </script>
 
@@ -103,11 +105,14 @@
         {assignment.chore_name}
       </p>
 
+      <!-- No assignee chip: the section the card sits in already says whose it is
+           (My chores, or a named Family fold). The one place that isn't true —
+           Needs review, which mixes people — has its own markup and shows the
+           name itself. -->
       <div class="chips">
         {#if freqLabel}<span class="chip chip--freq">{freqLabel}</span>{/if}
         <span class="chip">{assignment.points} pts</span>
         {#if assignment.location}<span class="chip">{assignment.location}</span>{/if}
-        {#if assignment.person_name}<span class="chip">{assignment.person_name}</span>{/if}
       </div>
 
       <div class="chips">
