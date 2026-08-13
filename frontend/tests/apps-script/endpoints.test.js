@@ -809,3 +809,66 @@ describe('a stranded prior is closed even when the current occurrence exists', (
     expect(rows).toHaveLength(2);   // nothing duplicated
   });
 });
+
+describe('one-off "doing it early" consumes the next occurrence (#43)', () => {
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 7, 3, 12, 0, 0)); }); // Aug 3
+  afterEach(() => vi.useRealTimers());
+
+  const monthly = () => ({
+    People: [{ person_id: 'kid', points_total: 0 }],
+    Chores: [{ chore_id: 'c1', frequency: 'monthly', monthly_day: '15', points: 5,
+               active: 'TRUE', last_generated_date: '2026-07-15' }],
+  });
+
+  it('marks the assignment manual_replaces when created as "doing it early"', () => {
+    const { ctx, read } = loadBackend(monthly());
+    ctx.actionAssign({ chore_id: 'c1', person_id: 'kid', replaces_cycle: true });
+    expect(read('Assignments')[0].assigned_by).toBe('manual_replaces');
+  });
+
+  it('completing it pushes the schedule to the following cycle', () => {
+    const { ctx, read } = loadBackend(monthly());
+    const id = ctx.actionAssign({ chore_id: 'c1', person_id: 'kid', replaces_cycle: true }).assignment_id;
+    ctx.actionComplete({ assignment_id: id, person_id: 'kid' });
+    // Aug 15 is now consumed, so the next occurrence is September's.
+    expect(read('Chores')[0].last_generated_date).toBe('2026-08-15');
+    expect(read('People')[0].points_total).toBe(5);
+  });
+
+  it('an "extra" one-off leaves the schedule alone', () => {
+    const { ctx, read } = loadBackend(monthly());
+    const id = ctx.actionAssign({ chore_id: 'c1', person_id: 'kid' }).assignment_id;
+    ctx.actionComplete({ assignment_id: id, person_id: 'kid' });
+    expect(read('Chores')[0].last_generated_date).toBe('2026-07-15'); // untouched
+    expect(read('People')[0].points_total).toBe(5);                   // still paid
+  });
+
+  it('skipping a "doing it early" one-off leaves the schedule alone', () => {
+    // Changing your mind must be free — only completing consumes the cycle.
+    const { ctx, read } = loadBackend(monthly());
+    const id = ctx.actionAssign({ chore_id: 'c1', person_id: 'kid', replaces_cycle: true }).assignment_id;
+    ctx.actionSkip({ assignment_id: id, admin_person_id: 'kid' });
+    expect(read('Chores')[0].last_generated_date).toBe('2026-07-15');
+  });
+
+  it('daily chores are unaffected — an extra effort today buys no day off', () => {
+    const { ctx, read } = loadBackend({
+      People: [{ person_id: 'kid', points_total: 0 }],
+      Chores: [{ chore_id: 'c1', frequency: 'daily', points: 2, active: 'TRUE',
+                 last_generated_date: '2026-08-03' }],
+    });
+    const id = ctx.actionAssign({ chore_id: 'c1', person_id: 'kid', replaces_cycle: true }).assignment_id;
+    ctx.actionComplete({ assignment_id: id, person_id: 'kid' });
+    expect(read('Chores')[0].last_generated_date).toBe('2026-08-03');
+  });
+
+  it('both flavours stay outside the recurrence', () => {
+    const { ctx } = loadBackend();
+    expect(ctx.isOneOffAssignment({ assigned_by: 'manual' })).toBe(true);
+    expect(ctx.isOneOffAssignment({ assigned_by: 'manual_replaces' })).toBe(true);
+    expect(ctx.isOneOffAssignment({ assigned_by: 'auto' })).toBe(false);
+    // A blank assigned_by (hand-added sheet row) counts as part of the
+    // recurrence — the safer default.
+    expect(ctx.isOneOffAssignment({})).toBe(false);
+  });
+});

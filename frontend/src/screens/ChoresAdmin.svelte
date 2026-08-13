@@ -16,6 +16,19 @@
   let error = null;
   let editingChore = null;   // null = not editing, object = edit existing
   let assigningChore = null; // chore awaiting an assignee for a one-off today
+  let assignMode = 'extra';  // 'extra' | 'replace' — see ADD_MODES below
+
+  // Two intents behind the Add button (#43). Only completing tells them apart:
+  // 'replace' consumes the upcoming occurrence, 'extra' leaves the schedule
+  // alone. Skipping either is harmless, so changing your mind is free.
+  const ADD_MODES = [
+    { value: 'extra', label: 'Extra', hint: 'On top of the schedule' },
+    { value: 'replace', label: 'Doing it early', hint: 'Covers the next scheduled one' },
+  ];
+
+  // Daily chores are excluded from the choice: an extra effort today shouldn't
+  // buy a day off tomorrow, so they're always simply extra.
+  $: addModes = assigningChore && assigningChore.frequency !== 'daily' ? ADD_MODES : null;
   let showAddForm = false;
   let addInitialName = '';    // prefill the new-chore form (from search)
   let searchTerm = '';
@@ -261,12 +274,16 @@
     selected={''}
     allowUnassigned={true}
     title="Create assignment due today"
+    modes={addModes}
+    bind:selectedMode={assignMode}
     onSelect={async (person) => {
       const target = assigningChore;
+      const replaces = addModes !== null && assignMode === 'replace';
       assigningChore = null;
-      await assignChoreToday(target.chore_id, person?.person_id ?? '');
+      assignMode = 'extra';
+      await assignChoreToday(target.chore_id, person?.person_id ?? '', replaces);
     }}
-    onClose={() => (assigningChore = null)}
+    onClose={() => { assigningChore = null; assignMode = 'extra'; }}
   />
 {/if}
 

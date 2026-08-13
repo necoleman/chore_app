@@ -49,7 +49,7 @@ function actionToday(params) {
       // Sinks to the end of its cadence group, e.g. after-dinner chores (#40).
       sort_last:        chore.sort_last === true || chore.sort_last === 'TRUE',
       // Manual one-offs sit outside the recurrence and are grouped separately.
-      is_one_off:       a.assigned_by === 'manual' || chore.frequency === 'once',
+      is_one_off:       isOneOffAssignment(a) || chore.frequency === 'once',
       points:           chore.points || 0,
       requires_approval: chore.requires_approval === true || chore.requires_approval === 'TRUE',
       person_id:        a.person_id || null,
@@ -276,6 +276,7 @@ function actionComplete(body) {
     });
     incrementPoints(personId, points, people);
     anchorIntervalOnCompletion(assignment.chore_id, todayStr());
+    if (assignment.assigned_by === 'manual_replaces') consumeNextOccurrence(assignment.chore_id);
     invalidateCache('Assignments');
     invalidateCache('People');
     return { status: 'done', completed_at: now, points_awarded: points };
@@ -327,6 +328,7 @@ function actionApprove(body) {
     assignment.chore_id,
     String(assignment.completed_at || '').slice(0, 10) || todayStr()
   );
+  if (assignment.assigned_by === 'manual_replaces') consumeNextOccurrence(assignment.chore_id);
 
   invalidateCache('Assignments');
   return { status: 'done', points_awarded: points, reviewed_at: now };
@@ -521,10 +523,17 @@ function actionClaim(body) {
 
 // ─── POST: assign (manual assignment creation) ────────────────────────────────
 
+// `replaces_cycle` records the intent chosen when the assignment was created
+// (#43): an EXTRA on top of the schedule, or one being done EARLY instead of the
+// next scheduled occurrence. The distinction only matters on completion —
+// `manual_replaces` consumes the upcoming occurrence, plain `manual` doesn't —
+// so skipping either one leaves the schedule untouched, which is what makes
+// changing your mind free.
 function actionAssign(body) {
   var choreId = body.chore_id;
   var personId = body.person_id || '';
   var dueDate = body.due_date || todayStr();
+  var replaces = body.replaces_cycle === true || body.replaces_cycle === 'true';
 
   var assignmentId = choreId + '_' + dueDate.replace(/-/g, '') + '_' + generateId('m').slice(-6);
   appendRow('Assignments', {
@@ -533,7 +542,7 @@ function actionAssign(body) {
     person_id: personId,
     due_date: dueDate,
     status: 'open',
-    assigned_by: 'manual',
+    assigned_by: replaces ? 'manual_replaces' : 'manual',
   });
   invalidateCache('Assignments');
   return { assignment_id: assignmentId, success: true };
@@ -807,12 +816,45 @@ function actionResetRotation(body) {
 //
 // Used by approve/reject, which may land days after the occurrence they concern
 // has already been superseded by the nightly roll-forward.
+// True for a manual one-off — either flavour (`manual` or `manual_replaces`).
+// Matched on the prefix rather than an exact value so a blank `assigned_by`
+// (a hand-added sheet row) still counts as part of the recurrence, which is the
+// safer default.
+function isOneOffAssignment(a) {
+  return String(a.assigned_by || '').indexOf('manual') === 0;
+}
+
+// Completing a one-off that was created as "instead of the next scheduled one"
+// consumes that occurrence, so the chore doesn't come round again immediately
+// after someone has just done it (#43).
+//
+// Daily chores are excluded: an extra effort today shouldn't buy a day off
+// tomorrow. Interval chores are already handled by anchorIntervalOnCompletion,
+// which re-anchors to the completion date — the same "cycle satisfied" outcome
+// by a different route. So only the calendar cadences need this.
+//
+// Known edge: if the upcoming occurrence already has a live row (possible when
+// `lead_days` is large), that row is left in place and would need completing or
+// skipping separately. In practice the chore is already on the list in that
+// window, so there's no reason to reach for Add at all.
+function consumeNextOccurrence(choreId) {
+  var chore = getRows('Chores').find(function(c) { return c.chore_id === choreId; });
+  if (!chore) return;
+  var freq = chore.frequency;
+  if (freq !== 'weekly' && freq !== 'custom' && freq !== 'monthly') return;
+
+  var next = nextDueForChore(chore, new Date());
+  if (!next) return;
+  stampLastGenerated(chore, formatDate(next));
+  invalidateCache('Chores');
+}
+
 function liveOccurrence(choreId, excludeAssignmentId) {
   return getRows('Assignments')
     .filter(function(a) {
       return a.chore_id === choreId
         && a.assignment_id !== excludeAssignmentId
-        && a.assigned_by !== 'manual'
+        && !isOneOffAssignment(a)
         && (a.status === 'open' || a.status === 'pending_review');
     })
     .reduce(function(latest, a) {

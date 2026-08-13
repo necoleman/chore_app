@@ -77,9 +77,7 @@
   class:card--pending={isPending}
   class:card--rejected={isRejected}
 >
-  <div class="stripe"></div>
-  <div class="card-inner">
-    {#if isInteractive}
+  {#if isInteractive}
       <button
         type="button"
         class="check-btn"
@@ -165,7 +163,6 @@
         </button>
       {/if}
     </div>
-  </div>
 </div>
 
 {#if showUncheckConfirm}
@@ -190,38 +187,27 @@
 {/if}
 
 <style>
-  /* overflow:hidden keeps the 12px corners while the stripe runs full height —
-     a border-left would force square corners instead. */
+  /* The cadence stripe is an INSET box-shadow, not a child element or a
+     border-left. A child needed overflow:hidden to respect the rounded corners,
+     which clipped the absolutely-positioned admin dropdown; a border-left would
+     force square corners. An inset shadow follows the radius and clips nothing. */
   .card {
     display: flex;
+    align-items: flex-start;
+    gap: 12px;
     background: #fff;
     border-radius: 12px;
+    padding: 14px 12px 14px 15px;
     margin-bottom: 8px;
     border: 1.5px solid #f3f4f6;
-    overflow: hidden;
     transition: opacity 0.2s;
     min-height: 56px;
   }
 
-  .stripe {
-    width: 3px;
-    flex: none;
-    background: #d1d5db;
-  }
-
-  .card--oneoff .stripe { background: #7f77dd; }
-  .card--daily .stripe { background: #d85a30; }
-  .card--weekly .stripe { background: #1d9e75; }
-  .card--monthly .stripe { background: #888780; }
-
-  .card-inner {
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-    padding: 14px 12px;
-    flex: 1;
-    min-width: 0;
-  }
+  .card--oneoff { box-shadow: inset 3px 0 0 #7f77dd; }
+  .card--daily { box-shadow: inset 3px 0 0 #d85a30; }
+  .card--weekly { box-shadow: inset 3px 0 0 #1d9e75; }
+  .card--monthly { box-shadow: inset 3px 0 0 #888780; }
 
   /* Only the circle is the action target (tap-to-complete/claim). Padded to a
      ~44px tap area for iOS while the visual circle stays 32px. */

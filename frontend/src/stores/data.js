@@ -131,10 +131,12 @@ export async function skipAssignment(assignment_id, admin_person_id) {
 // Create an extra assignment of an existing chore, due today (#39). Used by the
 // "Add" button on each Manage Chores row. The assignment sits outside the
 // recurrence — the generator never rolls it forward or penalizes it — so the
-// chore's own schedule is untouched.
-export async function assignChoreToday(chore_id, person_id) {
+// chore's own schedule is untouched — unless it was created as "doing it early"
+// (`replaces_cycle`), in which case completing it consumes the upcoming
+// occurrence. Skipping it never touches the schedule either way.
+export async function assignChoreToday(chore_id, person_id, replaces_cycle = false) {
   try {
-    await post('assign', { chore_id, person_id: person_id || '' });
+    await post('assign', { chore_id, person_id: person_id || '', replaces_cycle });
     await refresh();
     showToast('Added to today', 'success');
     return true;

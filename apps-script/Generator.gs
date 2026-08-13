@@ -53,7 +53,7 @@ function processChoreGeneration(chore, today, allAssignments, people) {
   // "Add" button live outside it entirely (#39) — they are never closed, rolled
   // forward, penalized, or counted toward the chore's miss streak.
   var mine = allAssignments.filter(function(a) {
-    return a.chore_id === chore.chore_id && a.assigned_by !== 'manual';
+    return a.chore_id === chore.chore_id && !isOneOffAssignment(a);
   });
 
   // Reconcile the cursor against reality BEFORE trusting it (#41).
