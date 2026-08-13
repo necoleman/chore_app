@@ -35,12 +35,7 @@ describe('completedOnLocalDate (#31/#32)', () => {
 
 describe('effectiveLeadDays (#23)', () => {
   const { ctx } = loadBackend();
-  it('defaults to 1 for every frequency when unset', () => {
-    ['daily', 'once', 'weekly', 'custom', 'monthly'].forEach((frequency) => {
-      expect(ctx.effectiveLeadDays({ frequency })).toBe(1);
-    });
-    expect(ctx.effectiveLeadDays({ frequency: 'interval', interval_days: '3' })).toBe(1);
-  });
+  // Cadence defaults when unset are covered in the #44 block below.
   it('honours an explicit value within range', () => {
     expect(ctx.effectiveLeadDays({ frequency: 'weekly', lead_days: 4 })).toBe(4);
     expect(ctx.effectiveLeadDays({ frequency: 'monthly', lead_days: 7 })).toBe(7);
@@ -52,10 +47,11 @@ describe('effectiveLeadDays (#23)', () => {
     expect(ctx.effectiveLeadDays({ frequency: 'interval', interval_days: '3', lead_days: 5 })).toBe(2); // < 3
     expect(ctx.effectiveLeadDays({ frequency: 'interval', interval_days: '3', lead_days: 3 })).toBe(2); // strictly <
     expect(ctx.effectiveLeadDays({ frequency: 'daily', lead_days: 5 })).toBe(1);     // daily always 1
-    expect(ctx.effectiveLeadDays({ frequency: 'weekly', lead_days: 0 })).toBe(1);    // > 0
+    // 0 is not a valid lead, so it falls back to the cadence default rather than 1.
+    expect(ctx.effectiveLeadDays({ frequency: 'weekly', lead_days: 0 })).toBe(4);
   });
   it('appearOffsetDays is lead − 1', () => {
-    expect(ctx.appearOffsetDays({ frequency: 'weekly' })).toBe(0);              // default lead 1
+    expect(ctx.appearOffsetDays({ frequency: 'weekly' })).toBe(3);              // default lead 4
     expect(ctx.appearOffsetDays({ frequency: 'weekly', lead_days: 4 })).toBe(3);
   });
 });
@@ -170,5 +166,48 @@ describe('nextDueForChore never schedules into the past', () => {
     expect(nd({ frequency: 'daily', last_generated_date: '2026-02-01' }, at0005)).toBe('2026-08-10');
     expect(nd({ frequency: 'interval', interval_days: '7', last_generated_date: '2026-06-01' }, at0005))
       .toBe('2026-08-10');
+  });
+});
+
+describe('lead_days defaults by cadence (#44)', () => {
+  const { ctx } = loadBackend();
+  const lead = (chore) => ctx.effectiveLeadDays(chore);
+
+  it('defaults weekly and custom to 4 — Sunday chore appears Thursday', () => {
+    expect(lead({ frequency: 'weekly', custom_days: '0' })).toBe(4);
+    expect(lead({ frequency: 'custom', custom_days: 'monday,friday' })).toBe(4);
+  });
+
+  it('defaults monthly to 7', () => {
+    expect(lead({ frequency: 'monthly', monthly_day: '15' })).toBe(7);
+  });
+
+  it('defaults interval to min(N, 7)', () => {
+    expect(lead({ frequency: 'interval', interval_days: '90' })).toBe(7);
+    expect(lead({ frequency: 'interval', interval_days: '3' })).toBe(2); // capped by N-1
+  });
+
+  it('pins daily and once to 1 whatever is set', () => {
+    expect(lead({ frequency: 'daily' })).toBe(1);
+    expect(lead({ frequency: 'daily', lead_days: 5 })).toBe(1);
+    expect(lead({ frequency: 'once' })).toBe(1);
+  });
+
+  it('an explicit value still wins, subject to the cap', () => {
+    expect(lead({ frequency: 'weekly', custom_days: '0', lead_days: 2 })).toBe(2);
+    expect(lead({ frequency: 'weekly', custom_days: '0', lead_days: 99 })).toBe(6); // < 7
+    expect(lead({ frequency: 'monthly', monthly_day: '15', lead_days: 99 })).toBe(27);
+  });
+
+  it('keeps the cap that fixed the v1.3.2 short-interval bug', () => {
+    // Lead must stay strictly below the recurrence period, or an occurrence can
+    // appear before the previous one has closed.
+    expect(lead({ frequency: 'interval', interval_days: '2' })).toBe(1);
+    expect(lead({ frequency: 'interval', interval_days: '5' })).toBe(4);
+  });
+
+  it('appear offset is lead − 1, so a weekly default shows 3 days early', () => {
+    expect(ctx.appearOffsetDays({ frequency: 'weekly', custom_days: '0' })).toBe(3);
+    expect(ctx.appearOffsetDays({ frequency: 'daily' })).toBe(0);
   });
 });
