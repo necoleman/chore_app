@@ -49,6 +49,35 @@ function processChoreGeneration(chore, today, allAssignments, people) {
   var active = chore.active === true || chore.active === 'TRUE';
   if (!active) return null;
 
+  // Only AUTO occurrences participate in the recurrence. Manual one-offs from the
+  // "Add" button live outside it entirely (#39) — they are never closed, rolled
+  // forward, penalized, or counted toward the chore's miss streak.
+  var mine = allAssignments.filter(function(a) {
+    return a.chore_id === chore.chore_id && a.assigned_by !== 'manual';
+  });
+
+  // Reconcile the cursor against reality BEFORE trusting it (#41).
+  //
+  // `last_generated_date` is meant to equal the due date of the newest auto
+  // occurrence, but it can drift AHEAD of the rows: the pre-v1.9 rollover
+  // collapse advanced it while leaving the assignment where it was, and the old
+  // vacation pause advanced it without creating a row at all. A hand-edited
+  // sheet does the same.
+  //
+  // When it's ahead, `nextDueForChore` returns an occurrence that hasn't come
+  // round yet, the appear gate blocks, and the generator does nothing — leaving
+  // the live row stranded as permanently overdue and never regenerating. So
+  // trust the rows over the cursor and wind it back to the newest occurrence.
+  // (A chore with no rows at all is left alone: blanking the cursor is the
+  // documented way to force a rebuild, and that must keep working.)
+  var newest = mine.reduce(function(latest, a) {
+    return (!latest || a.due_date > latest.due_date) ? a : latest;
+  }, null);
+  if (newest && chore.last_generated_date &&
+      String(chore.last_generated_date).slice(0, 10) > String(newest.due_date).slice(0, 10)) {
+    stampLastGenerated(chore, String(newest.due_date).slice(0, 10));
+  }
+
   // `start_date` is the first occurrence's DUE date — nextDueForChore clamps to
   // it — and the lead window below may surface the chore a few days earlier (#9).
   var nextDue = nextDueForChore(chore, today);
@@ -59,13 +88,6 @@ function processChoreGeneration(chore, today, allAssignments, people) {
   if (formatDate(today) < formatDate(appearDate)) return null;
 
   var nextDueISO = formatDate(nextDue);
-
-  // Only AUTO occurrences participate in the recurrence. Manual one-offs from the
-  // "Add" button live outside it entirely (#39) — they are never closed, rolled
-  // forward, penalized, or counted toward the chore's miss streak.
-  var mine = allAssignments.filter(function(a) {
-    return a.chore_id === chore.chore_id && a.assigned_by !== 'manual';
-  });
 
   // Close out the occurrence being superseded. `pending_review` is deliberately
   // excluded: that work is done and awaiting review, so the next occurrence is
