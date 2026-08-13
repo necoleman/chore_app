@@ -734,16 +734,20 @@ function actionSetVacation(body) {
       }
     });
   } else {
-    // Chores whose only default assignee is this person.
-    var soleDefault = {};
+    // Chores this person is a default assignee of — either the sole one, or a
+    // member of a rotation. Originally sole-only, which orphaned every rotation
+    // chore: turning vacation ON unclaims ALL of their open rows regardless of
+    // how the chore is assigned, so a sole-only rule recovered a strict subset
+    // and the rest sat unclaimed forever.
+    var isDefaultFor = {};
     getRows('Chores').forEach(function(c) {
       var list = String(c.default_assignee || '')
         .split(',').map(function(s) { return s.trim(); }).filter(Boolean);
-      if (list.length === 1 && list[0] === personId) soleDefault[c.chore_id] = true;
+      if (list.indexOf(personId) !== -1) isDefaultFor[c.chore_id] = true;
     });
     var today = todayStr();
     getRows('Assignments').forEach(function(a) {
-      if (!a.person_id && a.status === 'open' && soleDefault[a.chore_id]) {
+      if (!a.person_id && a.status === 'open' && isDefaultFor[a.chore_id]) {
         var updates = { person_id: personId };
         // Same rule as claim/reassign (#38): taking ownership re-dates to today,
         // so nobody returns to a deadline that passed while they were away. The

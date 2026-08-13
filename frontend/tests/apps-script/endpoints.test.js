@@ -448,7 +448,7 @@ describe('actionSetVacation (#29)', () => {
     expect(rows.find((a) => a.assignment_id === 'done1').person_id).toBe('kid'); // done left alone
   });
 
-  it('turning OFF re-homes unclaimed open chores whose SOLE default is this person', () => {
+  it('turning OFF re-homes unclaimed open chores this person is a default for', () => {
     const { ctx, read } = loadBackend({
       People: [{ person_id: 'kid', name: 'Kid', on_vacation: true }],
       Chores: [
@@ -739,5 +739,73 @@ describe('recomputeStreak (#38)', () => {
     });
     expect(ctx.recomputeStreak('kid')).toBe(2);
     vi.useRealTimers();
+  });
+});
+
+describe('vacation return recovers rotation chores too', () => {
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 7, 13, 12, 0, 0)); });
+  afterEach(() => vi.useRealTimers());
+
+  it('re-homes a rotation chore, not just sole-assignee ones', () => {
+    // Turning vacation ON unclaims ALL of their open rows regardless of how the
+    // chore is assigned, so a sole-only rule recovered a strict subset and left
+    // every rotation chore orphaned in the unclaimed pile.
+    const { ctx, read } = loadBackend({
+      People: [{ person_id: 'neal', name: 'Neal', on_vacation: 'TRUE' }],
+      Chores: [
+        { chore_id: 'solo', default_assignee: 'neal' },
+        { chore_id: 'rot', default_assignee: 'neal,claire' },
+      ],
+      Assignments: [
+        { assignment_id: 'a1', chore_id: 'solo', person_id: '', due_date: '2026-08-01', status: 'open' },
+        { assignment_id: 'a2', chore_id: 'rot', person_id: '', due_date: '2026-08-01', status: 'open' },
+      ],
+    });
+
+    ctx.actionSetVacation({ person_id: 'neal', on_vacation: false });
+    const rows = read('Assignments');
+    expect(rows.find((a) => a.assignment_id === 'a1').person_id).toBe('neal');
+    expect(rows.find((a) => a.assignment_id === 'a2').person_id).toBe('neal');
+    // Both re-dated to today — nobody returns to a deadline that already passed.
+    expect(rows.every((a) => a.due_date === '2026-08-13')).toBe(true);
+  });
+
+  it('leaves alone a chore they are not a default assignee of', () => {
+    const { ctx, read } = loadBackend({
+      People: [{ person_id: 'neal', on_vacation: 'TRUE' }],
+      Chores: [{ chore_id: 'other', default_assignee: 'claire' }],
+      Assignments: [{ assignment_id: 'a1', chore_id: 'other', person_id: '', due_date: '2026-08-01', status: 'open' }],
+    });
+    ctx.actionSetVacation({ person_id: 'neal', on_vacation: false });
+    expect(read('Assignments')[0].person_id).toBe('');
+  });
+});
+
+describe('a stranded prior is closed even when the current occurrence exists', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('closes it and moves the miss count onto the live row', () => {
+    // Can't arise in steady state, but a transition or hand-edited sheet can
+    // leave both rows present — and the early return used to skip the close,
+    // leaving the old one open forever.
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 7, 13, 0, 5, 0));
+    const { ctx, read } = loadBackend({
+      People: [{ person_id: 'kid', points_total: 10 }],
+      Chores: [{ chore_id: 'c1', frequency: 'daily', active: 'TRUE', default_assignee: 'kid',
+                 points: 3, last_generated_date: '2026-08-12' }],
+      Assignments: [
+        { assignment_id: 'stuck', chore_id: 'c1', person_id: 'kid', due_date: '2026-08-11',
+          status: 'open', assigned_by: 'auto', missed_count: 1 },
+        { assignment_id: 'live', chore_id: 'c1', person_id: 'kid', due_date: '2026-08-13',
+          status: 'open', assigned_by: 'auto' },
+      ],
+    });
+    ctx.runNightlyGenerator();
+
+    const rows = read('Assignments');
+    expect(rows.find((a) => a.assignment_id === 'stuck').status).toBe('skipped');
+    expect(read('People')[0].points_total).toBe(7);
+    expect(rows.find((a) => a.assignment_id === 'live').missed_count).toBe(2);
+    expect(rows).toHaveLength(2);   // nothing duplicated
   });
 });

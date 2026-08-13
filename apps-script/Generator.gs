@@ -67,9 +67,23 @@ function processChoreGeneration(chore, today, allAssignments, people) {
     return a.chore_id === chore.chore_id && a.assigned_by !== 'manual';
   });
 
-  // Already have this occurrence — just record the anchor and stop.
+  // Close out the occurrence being superseded. `pending_review` is deliberately
+  // excluded: that work is done and awaiting review, so the next occurrence is
+  // created alongside it and the miss count carries unchanged.
+  var prior = mine.find(function(a) { return a.status === 'open' && a.due_date < nextDueISO; });
+
+  // Already have this occurrence — record the anchor and stop. But close any
+  // stranded prior FIRST: an occurrence older than the current one is finished
+  // with either way, and returning early used to leave it open forever. That
+  // can't arise in steady state (one live occurrence at a time) but it does
+  // after a messy transition or a hand-edited sheet.
   var existing = mine.find(function(a) { return a.due_date === nextDueISO; });
   if (existing) {
+    if (prior) {
+      var stranded = closeMissedOccurrence(chore, prior, people);
+      updateRow('Assignments', 'assignment_id', existing.assignment_id, { missed_count: stranded });
+      existing.missed_count = stranded;
+    }
     stampLastGenerated(chore, nextDueISO);
     return null;
   }
@@ -82,13 +96,9 @@ function processChoreGeneration(chore, today, allAssignments, people) {
   // the vacationer — no pause guard is needed (this replaces #34).
   var assignee = resolveRotationAssignee(chore, people);
 
-  // Close out the occurrence being superseded. `pending_review` is deliberately
-  // excluded: that work is done and awaiting review, so the next occurrence is
-  // created alongside it and the miss count carries unchanged.
-  var prior = mine.find(function(a) { return a.status === 'open' && a.due_date < nextDueISO; });
   var carriedMisses = 0;
   if (prior) {
-    carriedMisses = closeMissedOccurrence(chore, prior, people) ;
+    carriedMisses = closeMissedOccurrence(chore, prior, people);
   } else {
     // No open prior — inherit the streak from the most recent closed occurrence
     // so a run of misses keeps counting, and a completion resets it to 0.
