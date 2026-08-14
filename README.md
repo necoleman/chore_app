@@ -30,6 +30,9 @@ person_id | name | color | fcm_token | points_total | streak_current | streak_be
 ```
 chore_id | name | location | description | points | frequency | weekday_due | monthly_day | monthly_week | interval_days | once_date | start_date | lead_days | sort_last | last_generated_date | default_assignee | rotation_last | requires_approval | active
 ```
+Upgrading from before v1.10? Your sheet will also still have `custom_days` and `monthly_weekday`. Nothing reads them — leave them in place until the migration has bedded in, then delete them.
+```
+```
 
 **Locations** (feeds the location dropdown in the chore editor — one row per allowed location)
 ```

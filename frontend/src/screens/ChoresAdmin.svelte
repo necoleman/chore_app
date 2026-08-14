@@ -47,7 +47,7 @@
   let searchTerm = '';
   let sortMode = 'default';   // default | location | assignee | periodicity | countdown
 
-  const FREQ_ORDER = { daily: 0, weekly: 1, custom: 2, monthly: 3, interval: 4, once: 5 };
+  const FREQ_ORDER = { daily: 0, weekly: 1, monthly: 2, interval: 3, once: 4 };
 
   async function load() {
     loading = true;

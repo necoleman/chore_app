@@ -1,7 +1,5 @@
 // ─── Date utilities ──────────────────────────────────────────────────────────
 
-var DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-
 function daysInMonth(date) {
   return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
 }

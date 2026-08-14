@@ -5,7 +5,6 @@
 // dueDates.test.js.
 import { formatDate, today } from './utils.js';
 
-const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 const WEEKDAY_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 function parseLocalDate(str) {

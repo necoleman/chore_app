@@ -887,3 +887,51 @@ describe('Add: one-off vs assign-early (#43)', () => {
     expect(card.lead_days).toBe(23);   // Aug 3 .. Aug 25 inclusive
   });
 });
+
+describe('migrateWeekdayDue (#45)', () => {
+  it('converts custom to daily, moves weekly and monthly weekdays across', () => {
+    const { ctx, read } = loadBackend({
+      Chores: [
+        { chore_id: 'cust', frequency: 'custom', custom_days: 'monday,thursday', lead_days: 4 },
+        { chore_id: 'wk', frequency: 'weekly', custom_days: '0' },
+        { chore_id: 'mo', frequency: 'monthly', monthly_week: 2, monthly_weekday: 5 },
+        { chore_id: 'day', frequency: 'daily' },
+      ],
+    });
+    const res = ctx.migrateWeekdayDue();
+    const rows = read('Chores');
+    const by = (id) => rows.find((c) => c.chore_id === id);
+
+    // custom becomes DAILY — "Mon and Thu" is a discipline, so it takes daily's
+    // tight lead rather than weekly's window.
+    expect(by('cust').frequency).toBe('daily');
+    expect(by('cust').weekday_due).toBe('1,4');
+    expect(by('cust').lead_days).toBe(''); // was set against weekly's 4-day window
+
+    expect(by('wk').weekday_due).toBe('0');
+    expect(by('wk').frequency).toBe('weekly');
+    expect(by('mo').weekday_due).toBe('5');
+    expect(by('day').weekday_due).toBe(''); // nothing to convert
+    expect(res.migrated).toBe(3);
+  });
+
+  it('is a no-op on a second run', () => {
+    const { ctx, read } = loadBackend({
+      Chores: [{ chore_id: 'cust', frequency: 'custom', custom_days: 'monday' }],
+    });
+    ctx.migrateWeekdayDue();
+    expect(ctx.migrateWeekdayDue().migrated).toBe(0);
+    expect(read('Chores')[0].weekday_due).toBe('1');
+  });
+
+  it('skips unreadable rows rather than guessing', () => {
+    const { ctx, read } = loadBackend({
+      Chores: [
+        { chore_id: 'bad', frequency: 'custom', custom_days: 'someday' },
+        { chore_id: 'ok', frequency: 'weekly', custom_days: '3' },
+      ],
+    });
+    expect(ctx.migrateWeekdayDue().migrated).toBe(1);
+    expect(read('Chores').find((c) => c.chore_id === 'bad').frequency).toBe('custom');
+  });
+});

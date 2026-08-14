@@ -948,6 +948,18 @@ function anchorIntervalOnCompletion(choreId, dateISO) {
 // once you're satisfied.
 function migrateWeekdayDue() {
   var DAY_NAMES_LOCAL = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+  // Fail loudly if the column hasn't been added yet. `updateRow` skips columns
+  // it can't find rather than erroring, so without this the migration would
+  // write nothing at all and still report every row as migrated.
+  var sheet = getSheet('Chores');
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  if (headers.indexOf('weekday_due') === -1) {
+    throw new Error(
+      'The Chores tab has no "weekday_due" column. Add it (any position) before running this migration.'
+    );
+  }
+
   var chores = getRows('Chores');
   var changed = 0;
 
