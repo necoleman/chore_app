@@ -42,7 +42,7 @@ export function defaultState() {
     people: [USERS.admin, USERS.kid, { person_id: 'dad', name: 'Dad', color: '#111827', is_admin: true }],
     chores: [
       { chore_id: 'c1', name: 'Sweep kitchen', location: 'Kitchen', description: '', points: 3, frequency: 'daily', default_assignee: 'me', requires_approval: 'FALSE', active: 'TRUE' },
-      { chore_id: 'c2', name: 'Vacuum', location: 'Living Room', description: '', points: 2, frequency: 'weekly', custom_days: '2', default_assignee: '', requires_approval: 'FALSE', active: 'TRUE' },
+      { chore_id: 'c2', name: 'Vacuum', location: 'Living Room', description: '', points: 2, frequency: 'weekly', weekday_due: '2', default_assignee: '', requires_approval: 'FALSE', active: 'TRUE' },
     ],
     locations: [{ location: 'Kitchen' }, { location: 'Living Room' }, { location: 'Garage' }],
     assignments: [],

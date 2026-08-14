@@ -25,11 +25,29 @@ function nthWeekdayOfMonth(year, month, weekday, n) {
   return new Date(year, month, 1 + offset + (n - 1) * 7);
 }
 
+// `weekday_due` as an array of weekday numbers (0 = Sunday). One column serving
+// every frequency (#45):
+//
+//   daily    — blank means EVERY day; a list pins it to those days
+//   weekly   — a single day
+//   monthly  — a single day, paired with `monthly_week` for "second Sunday"
+//   interval — a single day to land on after the interval elapses
+//
+// Replaces `custom_days` (which held a bare number for weekly but day *names*
+// for custom — two formats in one column) and `monthly_weekday`. Always numbers
+// now; most frequencies simply use a list of one.
+function weekdaysDue(chore) {
+  return String(chore.weekday_due == null ? '' : chore.weekday_due)
+    .split(',')
+    .map(function(d) { return parseInt(String(d).trim(), 10); })
+    .filter(function(n) { return !isNaN(n) && n >= 0 && n <= 6; });
+}
+
 // True when the monthly chore uses the nth-weekday sub-mode (#16) rather than a
-// fixed day-of-month. Both fields must be present.
+// fixed day-of-month. Needs both the week ordinal and a weekday.
 function usesNthWeekday(chore) {
   return chore.monthly_week !== '' && chore.monthly_week != null &&
-         chore.monthly_weekday !== '' && chore.monthly_weekday != null;
+         weekdaysDue(chore).length > 0;
 }
 
 // True when a stored timestamp (ISO datetime, UTC or with an offset) falls on
@@ -58,22 +76,25 @@ function addDaysDate(date, n) {
 }
 
 // Pure calendar predicate: is `date` a scheduled DUE day for this chore?
-// (daily/weekly/custom/monthly only — no start_date, catch-up, or lead.)
+// (daily/weekly/monthly only — no start_date, catch-up, or lead.)
 function isScheduledDueDay(chore, date) {
   var freq = chore.frequency;
-  if (freq === 'daily') return true;
-  if (freq === 'weekly') return date.getDay() === parseInt(chore.custom_days, 10);
-  if (freq === 'custom') {
-    var days = (chore.custom_days || '').toLowerCase().split(',').map(function(d) { return d.trim(); });
-    return days.indexOf(DAY_NAMES[date.getDay()]) !== -1;
-  }
+  var days = weekdaysDue(chore);
+
+  // Daily means "expected on these days" (#45). Blank is every day; a list pins
+  // it, which is what the old `custom` frequency did — but as DAILY, so it keeps
+  // daily's tight lead of 1 and its Every-day grouping. That's the point of the
+  // merge: a Mon/Thu chore is a discipline, not a "sometime this week".
+  if (freq === 'daily') return days.length === 0 || days.indexOf(date.getDay()) !== -1;
+
+  if (freq === 'weekly') return days.length > 0 && days.indexOf(date.getDay()) !== -1;
+
   if (freq === 'monthly') {
     var targetDay;
     if (usesNthWeekday(chore)) {
       var week = parseInt(chore.monthly_week, 10);
-      var wd = parseInt(chore.monthly_weekday, 10);
-      if (!week || isNaN(wd)) return false;
-      targetDay = nthWeekdayOfMonth(date.getFullYear(), date.getMonth(), wd, week).getDate();
+      if (!week) return false;
+      targetDay = nthWeekdayOfMonth(date.getFullYear(), date.getMonth(), days[0], week).getDate();
     } else {
       var md = parseInt(chore.monthly_day, 10);
       if (!md) return false;
@@ -85,12 +106,11 @@ function isScheduledDueDay(chore, date) {
 }
 
 // The recurrence period in days — used to keep the lead window shorter than the
-// interval so occurrences never overlap. (custom uses the 7-day weekly cycle;
-// monthly uses 28, the shortest month, to stay safe across months.)
+// interval so occurrences never overlap. (monthly uses 28, the shortest month,
+// to stay safe across months.)
 function recurrencePeriodDays(chore) {
   switch (chore.frequency) {
     case 'weekly':
-    case 'custom':
       return 7;
     case 'monthly':
       return 28;
@@ -101,37 +121,15 @@ function recurrencePeriodDays(chore) {
   }
 }
 
-// The chore's true cadence in days, used ONLY for grouping and ordering the
-// Today screen (#38). Deliberately separate from `recurrencePeriodDays` above:
-// that one reports a flat 7 for `custom` because it feeds the lead-window clamp,
-// where treating M/W/F as a 2-day cycle would squash the lead window. Here we
-// want the real cadence, so a thrice-weekly chore sorts above a weekly one.
-//
-// Not consulted for one-offs — manual assignments and `once` chores bypass
-// cadence grouping entirely.
-function sortPeriodDays(chore) {
-  switch (chore.frequency) {
-    case 'daily':
-      return 1;
-    case 'custom':
-      var days = String(chore.custom_days || '')
-        .split(',').map(function(s) { return s.trim(); }).filter(Boolean).length;
-      return days > 0 ? 7 / days : 7;
-    case 'weekly':
-      return 7;
-    case 'monthly':
-      return 28;
-    case 'interval':
-      return parseInt(chore.interval_days, 10) || 7;
-    default:
-      return 1;
-  }
-}
-
 // The default lead window when `lead_days` is blank, by cadence (#44). Bigger
 // jobs get more runway: a weekly chore due Sunday surfaces on Thursday, a
 // monthly one about a week ahead. Daily and once are pinned to 1 — they appear
 // on the day, and there is nothing meaningful to see them ahead of.
+//
+// Daily keeps that 1 even when `weekday_due` pins it to specific days (#45).
+// That's deliberate and is the whole reason the old `custom` frequency was
+// folded into daily: "Mon and Thu" means done ON those days, so it gets daily's
+// strictness rather than weekly's generous window.
 //
 // These were the original v1.3.0 defaults. v1.3.2 flattened them all to 1 while
 // fixing a short-interval bug (a chore reappearing the next day and being
@@ -141,7 +139,6 @@ function sortPeriodDays(chore) {
 function defaultLeadDays(chore) {
   switch (chore.frequency) {
     case 'weekly':
-    case 'custom':
       return 4;
     case 'monthly':
       return 7;
@@ -168,6 +165,22 @@ function effectiveLeadDays(chore) {
 // Days before the due date the assignment first appears (lead window − 1).
 function appearOffsetDays(chore) {
   return effectiveLeadDays(chore) - 1;
+}
+
+// Roll a computed interval due date forward to the next `weekday_due`, so a
+// long-cadence chore can be made to land on (say) a Sunday (#45). Blank means no
+// snapping. Only interval chores use this — the calendar frequencies already
+// derive their weekday from the schedule itself.
+//
+// Note this makes the cadence DRIFT: the cursor is stamped with the snapped date,
+// so each cycle starts from it and the schedule slides later by however far the
+// snap reached — up to 6 days, compounding. Chosen deliberately: the interval is
+// specified as counting from the due date that actually appears.
+function snapToWeekday(date, chore) {
+  var days = weekdaysDue(chore);
+  if (days.length === 0) return date;
+  var offset = (days[0] - date.getDay() + 7) % 7;
+  return offset === 0 ? date : addDaysDate(date, offset);
 }
 
 // The due date of the NEXT occurrence to schedule — strictly after the last
@@ -203,12 +216,15 @@ function nextDueForChore(chore, today) {
   if (freq === 'interval') {
     var n = parseInt(chore.interval_days, 10);
     if (!n || n < 1) return null;
-    if (!lastGen) return (start && start.getTime() > todayMid.getTime()) ? start : todayMid;
+    if (!lastGen) {
+      var first = (start && start.getTime() > todayMid.getTime()) ? start : todayMid;
+      return snapToWeekday(first, chore);
+    }
     // Advance by whole intervals so the cadence keeps its phase, rather than
     // snapping to today and resetting it.
     var due = addDaysDate(lastGen, n);
     while (due.getTime() < todayMid.getTime()) due = addDaysDate(due, n);
-    return due;
+    return snapToWeekday(due, chore);
   }
 
   // Calendar frequencies: scan forward from the day after the last occurrence
@@ -216,7 +232,9 @@ function nextDueForChore(chore, today) {
   var from = lastGen ? addDaysDate(lastGen, 1) : todayMid;
   if (from.getTime() < todayMid.getTime()) from = todayMid;
   if (start && start.getTime() > from.getTime()) from = start;
-  if (freq === 'daily') return from;
+  // Daily with no `weekday_due` is due every day, so the first eligible day wins.
+  // With weekdays pinned it falls through to the scan below, like weekly/monthly.
+  if (freq === 'daily' && weekdaysDue(chore).length === 0) return from;
   for (var i = 0; i < 400; i++) {
     var d = addDaysDate(from, i);
     if (isScheduledDueDay(chore, d)) return d;

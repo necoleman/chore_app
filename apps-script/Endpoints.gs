@@ -44,8 +44,8 @@ function actionToday(params) {
       description:      chore.description || '',
       frequency:        chore.frequency || '',
       lead_days:        visibleLeadDays(chore, a, today),
-      // Cadence in days, for the Today screen's grouping/ordering (#38).
-      period_days:      chore.name ? sortPeriodDays(chore) : 1,
+      // Only for the card's "x90 days" chip — grouping keys off `frequency` (#45).
+      interval_days:    chore.interval_days || '',
       // Sinks to the end of its cadence group, e.g. after-dinner chores (#40).
       sort_last:        chore.sort_last === true || chore.sort_last === 'TRUE',
       // Manual one-offs sit outside the recurrence and are grouped separately.
@@ -685,10 +685,9 @@ function actionAddChore(body) {
     description: body.description || '',
     points: body.points || 1,
     frequency: body.frequency || 'daily',
-    custom_days: body.custom_days || '',
+    weekday_due: body.weekday_due == null ? '' : String(body.weekday_due),
     monthly_day: body.monthly_day || '',
     monthly_week: body.monthly_week || '',
-    monthly_weekday: (body.monthly_weekday === 0 || body.monthly_weekday) ? body.monthly_weekday : '',
     interval_days: body.interval_days || '',
     once_date: body.once_date || '',
     start_date: body.start_date || '',
@@ -719,8 +718,8 @@ function actionUpdateChore(body) {
   var oldFreq = existing ? existing.frequency : '';
 
   var updates = {};
-  var allowed = ['name', 'location', 'description', 'points', 'frequency', 'custom_days',
-                 'monthly_day', 'monthly_week', 'monthly_weekday', 'interval_days', 'once_date',
+  var allowed = ['name', 'location', 'description', 'points', 'frequency', 'weekday_due',
+                 'monthly_day', 'monthly_week', 'interval_days', 'once_date',
                  'start_date', 'lead_days', 'sort_last', 'default_assignee', 'requires_approval', 'active'];
   allowed.forEach(function(field) {
     if (body.hasOwnProperty(field)) updates[field] = body[field];
@@ -925,4 +924,75 @@ function anchorIntervalOnCompletion(choreId, dateISO) {
   if (String(chore.last_generated_date || '').slice(0, 10) === dateISO) return;
   updateRow('Chores', 'chore_id', choreId, { last_generated_date: dateISO });
   invalidateCache('Chores');
+}
+
+// ─── One-time migration: custom_days / monthly_weekday → weekday_due (#45) ─────
+//
+// Run ONCE from the Apps Script editor after adding the `weekday_due` column to
+// the Chores tab. Safe to re-run: rows already carrying a `weekday_due` are left
+// alone, so a second run is a no-op rather than a double-conversion.
+//
+// Converts, per chore:
+//   • frequency `custom` + custom_days "monday,thursday" → `daily` + "1,4"
+//     (custom is gone; pinned weekdays are a DAILY concern now, so they inherit
+//     daily's tight lead instead of weekly's generous one — the whole point of
+//     the merge)
+//   • frequency `weekly` + custom_days "0" → weekday_due "0"
+//   • monthly_weekday "5" → weekday_due "5"
+//
+// Also clears any explicit `lead_days` on converted custom chores: they were set
+// against weekly's 4-day window, and daily is pinned to 1, so leaving them would
+// be misleading even though effectiveLeadDays would clamp them anyway.
+//
+// Logs every change and leaves the old columns untouched — delete them by hand
+// once you're satisfied.
+function migrateWeekdayDue() {
+  var DAY_NAMES_LOCAL = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  var chores = getRows('Chores');
+  var changed = 0;
+
+  chores.forEach(function(c) {
+    if (String(c.weekday_due || '') !== '') return; // already migrated
+
+    var updates = {};
+    var freq = String(c.frequency || '');
+    var raw = String(c.custom_days == null ? '' : c.custom_days).trim();
+
+    if (freq === 'custom') {
+      var nums = raw.toLowerCase().split(',')
+        .map(function(d) { return DAY_NAMES_LOCAL.indexOf(d.trim()); })
+        .filter(function(i) { return i !== -1; });
+      if (nums.length === 0) {
+        Logger.log('SKIP ' + c.chore_id + ' — custom with unreadable custom_days: "' + raw + '"');
+        return;
+      }
+      updates.frequency = 'daily';
+      updates.weekday_due = nums.join(',');
+      if (String(c.lead_days || '') !== '') updates.lead_days = '';
+    } else if (freq === 'weekly') {
+      var n = parseInt(raw, 10);
+      if (isNaN(n) || n < 0 || n > 6) {
+        Logger.log('SKIP ' + c.chore_id + ' — weekly with unreadable custom_days: "' + raw + '"');
+        return;
+      }
+      updates.weekday_due = String(n);
+    } else if (String(c.monthly_weekday == null ? '' : c.monthly_weekday) !== '') {
+      var mw = parseInt(c.monthly_weekday, 10);
+      if (isNaN(mw) || mw < 0 || mw > 6) {
+        Logger.log('SKIP ' + c.chore_id + ' — unreadable monthly_weekday: "' + c.monthly_weekday + '"');
+        return;
+      }
+      updates.weekday_due = String(mw);
+    } else {
+      return; // nothing to convert
+    }
+
+    updateRow('Chores', 'chore_id', c.chore_id, updates);
+    changed++;
+    Logger.log('MIGRATED ' + c.chore_id + ' (' + freq + ') → ' + JSON.stringify(updates));
+  });
+
+  invalidateCache('Chores');
+  Logger.log('migrateWeekdayDue: ' + changed + ' of ' + chores.length + ' chores updated.');
+  return { migrated: changed, total: chores.length };
 }

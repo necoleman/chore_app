@@ -18,7 +18,7 @@ function a(over) {
     person_id: null,
     due_date: TODAY,
     status: 'open',
-    period_days: 1,
+    frequency: 'daily',
     points: 1,
     ...over,
   };
@@ -62,24 +62,23 @@ describe('filterTodayAssignments', () => {
 
 describe('groupKeyFor (#38)', () => {
   it('routes one-offs before cadence is considered', () => {
-    expect(groupKeyFor(a({ is_one_off: true, period_days: 1 }))).toBe('oneoff');
-    expect(groupKeyFor(a({ assigned_by: 'manual', period_days: 7 }))).toBe('oneoff');
-    expect(groupKeyFor(a({ frequency: 'once', period_days: 1 }))).toBe('oneoff');
+    expect(groupKeyFor(a({ is_one_off: true, frequency: 'daily' }))).toBe('oneoff');
+    expect(groupKeyFor(a({ assigned_by: 'manual', frequency: 'weekly' }))).toBe('oneoff');
+    expect(groupKeyFor(a({ frequency: 'once' }))).toBe('oneoff');
   });
 
-  it('cuts the cadence groups on period_days', () => {
-    expect(groupKeyFor(a({ period_days: 1 }))).toBe('daily');
-    expect(groupKeyFor(a({ period_days: 7 }))).toBe('weekly');
-    expect(groupKeyFor(a({ period_days: 28 }))).toBe('monthly');
-    expect(groupKeyFor(a({ period_days: 90 }))).toBe('monthly');
+  it('cuts the cadence groups on frequency (#45)', () => {
+    expect(groupKeyFor(a({ frequency: 'daily' }))).toBe('daily');
+    expect(groupKeyFor(a({ frequency: 'weekly' }))).toBe('weekly');
+    expect(groupKeyFor(a({ frequency: 'monthly' }))).toBe('monthly');
+    expect(groupKeyFor(a({ frequency: 'interval' }))).toBe('monthly');
   });
 
-  it('puts a thrice-weekly custom chore in the weekly group, above weekly itself', () => {
-    // 7/3 ≈ 2.33 — shorter cadence than weekly, so it sorts first within the group.
-    const mwf = a({ period_days: 7 / 3 });
-    const weekly = a({ period_days: 7 });
-    expect(groupKeyFor(mwf)).toBe('weekly');
-    expect(groupKeyFor(weekly)).toBe('weekly');
+  it('puts a daily chore pinned to weekdays under Every day, not This week (#45)', () => {
+    // The whole point of folding `custom` into daily: Mon/Thu is a discipline,
+    // so it groups with the dailies rather than with "sometime this week".
+    expect(groupKeyFor(a({ frequency: 'daily', weekday_due: '1,4' }))).toBe('daily');
+    expect(groupKeyFor(a({ frequency: 'weekly', weekday_due: '0' }))).toBe('weekly');
   });
 });
 
@@ -125,15 +124,15 @@ describe('compareWithinGroup (#38)', () => {
 describe('groupByCadence (#38)', () => {
   it('returns groups in fixed order and omits empty ones', () => {
     const list = [
-      a({ assignment_id: 'm', period_days: 28 }),
-      a({ assignment_id: 'd', period_days: 1 }),
+      a({ assignment_id: 'm', frequency: 'monthly' }),
+      a({ assignment_id: 'd', frequency: 'daily' }),
       a({ assignment_id: 'x', is_one_off: true }),
     ];
     expect(groupByCadence(list).map((g) => g.key)).toEqual(['oneoff', 'daily', 'monthly']);
   });
 
   it('leads with one-offs, because nothing regenerates them', () => {
-    const list = [a({ assignment_id: 'd', period_days: 1 }), a({ assignment_id: 'x', is_one_off: true })];
+    const list = [a({ assignment_id: 'd', frequency: 'daily' }), a({ assignment_id: 'x', is_one_off: true })];
     expect(groupByCadence(list)[0].key).toBe('oneoff');
   });
 
@@ -148,9 +147,9 @@ describe('splitTodaySections', () => {
 
   it('splits mine / family / unassigned and groups each by cadence', () => {
     const list = [
-      a({ assignment_id: 'mine', person_id: 'me', period_days: 1 }),
-      a({ assignment_id: 'theirs', person_id: 'you', person_name: 'You', period_days: 7 }),
-      a({ assignment_id: 'free', person_id: null, status: 'open', period_days: 28 }),
+      a({ assignment_id: 'mine', person_id: 'me', frequency: 'daily' }),
+      a({ assignment_id: 'theirs', person_id: 'you', person_name: 'You', frequency: 'weekly' }),
+      a({ assignment_id: 'free', person_id: null, status: 'open', frequency: 'monthly' }),
     ];
     const s = splitTodaySections(list, me, true, TODAY);
     expect(s.mine.flatMap((g) => g.items).map((x) => x.assignment_id)).toEqual(['mine']);

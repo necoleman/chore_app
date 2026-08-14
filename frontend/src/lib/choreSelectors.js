@@ -44,14 +44,19 @@ export const GROUPS = [
 ];
 
 // Which group an assignment belongs to. One-offs are routed by *what they are* —
-// a manual assignment or a `once` chore — before cadence is considered at all,
-// so `period_days` never has to answer for them.
+// a manual assignment or a `once` chore — before cadence is considered at all.
+//
+// Everything else keys straight off `frequency` (#45). A daily chore pinned to
+// Mon/Thu belongs under Every day, because that's what pinning it means: due on
+// those days, not "sometime this week". The old computed-period approach would
+// have filed it under This week.
 export function groupKeyFor(a) {
-  if (a.is_one_off || a.assigned_by === 'manual' || a.frequency === 'once') return 'oneoff';
-  const period = Number(a.period_days) || 1;
-  if (period <= 1) return 'daily';
-  if (period <= 7) return 'weekly';
-  return 'monthly';
+  if (a.is_one_off || String(a.assigned_by || '').startsWith('manual') || a.frequency === 'once') {
+    return 'oneoff';
+  }
+  if (a.frequency === 'daily') return 'daily';
+  if (a.frequency === 'weekly') return 'weekly';
+  return 'monthly'; // monthly and interval
 }
 
 // Comparator within a group. Keys in order:

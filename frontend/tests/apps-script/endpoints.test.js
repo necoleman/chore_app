@@ -333,15 +333,15 @@ describe('add/update chore start_date', () => {
 
   it('actionAddChore persists monthly nth-weekday fields (#16)', () => {
     const { ctx, read } = loadBackend();
-    ctx.actionAddChore({ name: 'Mop', frequency: 'monthly', monthly_week: 2, monthly_weekday: 5 });
+    ctx.actionAddChore({ name: 'Mop', frequency: 'monthly', monthly_week: 2, weekday_due: '5' });
     const row = read('Chores')[0];
     expect(row.monthly_week).toBe(2);
-    expect(row.monthly_weekday).toBe(5);
+    expect(row.weekday_due).toBe('5');
   });
 
   it('lead_days round-trips through add and update (#23 groundwork)', () => {
     const { ctx, read } = loadBackend();
-    ctx.actionAddChore({ name: 'Sweep', frequency: 'weekly', custom_days: '0', lead_days: 4 });
+    ctx.actionAddChore({ name: 'Sweep', frequency: 'weekly', weekday_due: '0', lead_days: 4 });
     expect(read('Chores')[0].lead_days).toBe(4);
     const choreId = read('Chores')[0].chore_id;
     ctx.actionUpdateChore({ chore_id: choreId, lead_days: 2 });
@@ -366,7 +366,7 @@ describe('generate-on-create (#17)', () => {
     const { ctx, read } = loadBackend();
     // Weekly Wednesday (3), lead_days 1 (no early window); 2026-06-28 is Sunday,
     // next Wednesday is 2026-07-01 → appears only on its due date → not yet.
-    ctx.actionAddChore({ name: 'Laundry', frequency: 'weekly', custom_days: '3', lead_days: 1 });
+    ctx.actionAddChore({ name: 'Laundry', frequency: 'weekly', weekday_due: '3', lead_days: 1 });
     expect(read('Assignments').length).toBe(0);
   });
 
@@ -375,7 +375,7 @@ describe('generate-on-create (#17)', () => {
     // Weekly Wednesday (3) with lead_days 4 → appears 3 days early. From Sunday
     // 2026-06-28, next Wednesday 2026-07-01 is within the window → created now,
     // but with the real (future) due date.
-    ctx.actionAddChore({ name: 'Laundry', frequency: 'weekly', custom_days: '3', lead_days: 4 });
+    ctx.actionAddChore({ name: 'Laundry', frequency: 'weekly', weekday_due: '3', lead_days: 4 });
     const rows = read('Assignments');
     expect(rows.length).toBe(1);
     expect(rows[0].due_date).toBe('2026-07-01');
@@ -607,7 +607,7 @@ describe('rejecting a chore while its owner is away', () => {
       { person_id: 'kid', name: 'Kid', on_vacation: onVacation },
       { person_id: 'admin', name: 'Admin', is_admin: 'TRUE' },
     ],
-    Chores: [{ chore_id: 'c1', frequency: 'weekly', custom_days: '0' }],
+    Chores: [{ chore_id: 'c1', frequency: 'weekly', weekday_due: '0' }],
     Assignments: [{ assignment_id: 'a1', chore_id: 'c1', person_id: 'kid', due_date: '2026-08-09',
                     status: 'pending_review', completed_at: '2026-08-09T10:00:00-05:00' }],
   });
@@ -654,7 +654,7 @@ describe('actionAssign creates a one-off outside the recurrence (#39)', () => {
   it('creates an assignment due today marked manual, without touching the schedule', () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 5, 28, 12, 0, 0));
     const { ctx, read } = loadBackend({
-      Chores: [{ chore_id: 'c1', frequency: 'weekly', custom_days: '0', active: 'TRUE',
+      Chores: [{ chore_id: 'c1', frequency: 'weekly', weekday_due: '0', active: 'TRUE',
                  last_generated_date: '2026-06-21' }],
     });
     ctx.actionAssign({ chore_id: 'c1', person_id: 'kid' });

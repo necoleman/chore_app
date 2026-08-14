@@ -28,7 +28,7 @@ person_id | name | color | fcm_token | points_total | streak_current | streak_be
 
 **Chores**
 ```
-chore_id | name | location | description | points | frequency | custom_days | monthly_day | monthly_week | monthly_weekday | interval_days | once_date | start_date | lead_days | sort_last | last_generated_date | default_assignee | rotation_last | requires_approval | active
+chore_id | name | location | description | points | frequency | weekday_due | monthly_day | monthly_week | interval_days | once_date | start_date | lead_days | sort_last | last_generated_date | default_assignee | rotation_last | requires_approval | active
 ```
 
 **Locations** (feeds the location dropdown in the chore editor — one row per allowed location)
@@ -413,12 +413,12 @@ Optional columns:
 - `rotation_last` — internal bookkeeping for the rotation above: the `person_id` the generator *planned* to assign most recently (not necessarily who did it). Leave blank; the generator manages it. Not surfaced in the editor. A "Reset rotation" button on rotating chores in Manage Chores (#33) resets this to the first person and reassigns the chore's current (open, not-overdue) assignments back to the top of the list.
 
 Frequency-specific columns (leave blank when not applicable):
-- `weekly` → `custom_days`: weekday number 0–6 (0 = Sunday)
-- `custom` → `custom_days`: comma-separated day names, e.g. `monday,wednesday,friday`
-- `monthly` → either a fixed day of month **or** an nth-weekday:
-  - `monthly_day`: day of month 1–31 (clamped to the month's length), **or**
-  - `monthly_week` (1–4 = First…Fourth) + `monthly_weekday` (0–6, 0 = Sunday) for "nth weekday of the month", e.g. `monthly_week=2, monthly_weekday=5` = the second Friday. When both nth-weekday fields are set they take precedence over `monthly_day`. The 5th occurrence is not supported. Choose the style in the chore editor's monthly "Day of month / Day of week" toggle.
-- `interval` → `interval_days`: number of days between occurrences, e.g. `90`
+- `daily` → `weekday_due`: **blank means every day**. A comma-separated list of weekday numbers pins it to those days instead, e.g. `1,4` for Mon and Thu. Pinned or not, daily always uses `lead_days` 1 — it appears on the day and is expected that day. (This replaces the old `custom` frequency: "Mon and Thu" is a discipline, so it belongs with daily's strictness rather than weekly's generous window.)
+- `weekly` → `weekday_due`: a single weekday number 0–6 (0 = Sunday). Means "due once this week", so it appears several days early.
+- `monthly` → either:
+  - `monthly_day`: day of month 1–31 (clamped to the month's length, so 30 becomes Feb 28), **or**
+  - `monthly_week` (1–4 = First…Fourth) + `weekday_due` for "nth weekday of the month", e.g. `monthly_week=2, weekday_due=5` = the second Friday. When `monthly_week` is set it takes precedence over `monthly_day`. The 5th occurrence is not supported. Choose the style in the chore editor's monthly "Day of month / Day of week" toggle.
+- `interval` → `interval_days`: number of days between occurrences, e.g. `90`. Optionally set `weekday_due` to a single weekday and the occurrence lands on the first such day *after* the interval elapses — useful for keeping big jobs on a weekend. Note the next interval then counts from that snapped date, so the schedule drifts a little later each cycle.
 - `once` → `once_date`: a single date (`YYYY-MM-DD`) for a one-time task. The generator creates exactly one assignment on/after that date, then auto-archives the chore (`active=FALSE`) so it leaves the active list. It still appears in History.
 
 The nightly generator runs at 3am. For each active chore it finds the next occurrence and, once today reaches that occurrence's **appear date** (`due − (lead_days − 1)`), creates the assignment with the real (possibly future) due date. To test it immediately, run `runNightlyGenerator` manually from the Apps Script editor.

@@ -29,7 +29,7 @@ test('next-due shows a weekday for weekly and nothing for daily (#10/#14)', asyn
   await mockApi(page, defaultState());
   await page.goto('/#/admin/chores');
 
-  // c2 (Vacuum) is weekly on Tuesday (custom_days '2') → shows "Next: <weekday>".
+  // c2 (Vacuum) is weekly on Tuesday (weekday_due '2') → shows "Next: <weekday>".
   await expect(page.getByText(/Next:/)).toBeVisible();
   // c1 (Sweep kitchen) is daily → no "Next:" tag on its row.
   const sweepRow = page.locator('.chore-row', { hasText: 'Sweep kitchen' });

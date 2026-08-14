@@ -66,7 +66,7 @@
     groupKey === 'oneoff'
       ? 'one-off'
       : assignment.frequency === 'interval'
-        ? `x${assignment.period_days} days`
+        ? `x${assignment.interval_days} days`
         : assignment.frequency;
 </script>
 
