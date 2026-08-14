@@ -32,8 +32,10 @@
         active: true,
       };
 
-  // Sheets stores blanks as '' — normalise to a real boolean so the checkbox
-  // binds correctly on legacy rows that predate the column.
+  // `sort_last` is set in the spreadsheet, not here — there's no control for it
+  // in the editor. Normalised and carried on `form` regardless so that saving a
+  // chore round-trips the value instead of silently clearing a flag someone set
+  // in the sheet.
   form.sort_last = form.sort_last === true || form.sort_last === 'TRUE';
 
   // A rotation is a comma-delimited list of person_ids (#24). It can't be
@@ -374,7 +376,7 @@
                concrete number when we're actually on an interval chore. -->
           <span class="hint">
             Leave blank for default: weekly 4, monthly 7, every-N-days
-            {form.frequency === 'interval' ? defaultLeadHint : 'up to 7'}. Max {leadMax}.
+            {form.frequency === 'interval' ? defaultLeadHint : 'up to 7'}.
           </span>
           <input
             type="number"
@@ -407,11 +409,6 @@
           </select>
         </label>
       {/if}
-
-      <label class="field field--row">
-        <input type="checkbox" bind:checked={form.sort_last} />
-        <span class="label">Show at the end of its group</span>
-      </label>
 
       <label class="field field--row">
         <input type="checkbox" bind:checked={form.requires_approval} />
