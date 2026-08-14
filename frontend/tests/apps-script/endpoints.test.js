@@ -966,3 +966,55 @@ describe('re-anchoring an interval chore honours weekday_due (#45)', () => {
     vi.useRealTimers();
   });
 });
+
+describe('leaderboard buckets by the LOCAL completion day (#46)', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('does not put a legacy UTC evening completion in the next day', () => {
+    // Pre-v1.8 rows stored completed_at in UTC. 8pm Central on Aug 14 is
+    // 01:00Z on Aug 15, so a raw string slice counted it as Aug 15 — which is
+    // how yesterday's points turned up under Today.
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 7, 15, 12, 0, 0)); // Aug 15
+    const { ctx } = loadBackend({
+      People: [{ person_id: 'kid', name: 'Kid', points_total: 0 }],
+      Chores: [{ chore_id: 'c1' }],
+      Assignments: [
+        { assignment_id: 'a1', chore_id: 'c1', person_id: 'kid', due_date: '2026-08-14',
+          status: 'done', completed_at: '2026-08-15T01:00:00Z', points_awarded: 5 },
+      ],
+    });
+    const row = ctx.actionLeaderboard({}).leaderboard[0];
+    expect(row.points_today).toBe(0);   // it was yesterday evening, locally
+    expect(row.points_week).toBe(5);    // still inside the week
+    vi.useRealTimers();
+  });
+
+  it('counts a completion made today', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 7, 15, 12, 0, 0));
+    const { ctx } = loadBackend({
+      People: [{ person_id: 'kid', name: 'Kid', points_total: 0 }],
+      Chores: [{ chore_id: 'c1' }],
+      Assignments: [
+        { assignment_id: 'a1', chore_id: 'c1', person_id: 'kid', due_date: '2026-08-15',
+          status: 'done', completed_at: '2026-08-15T09:00:00-05:00', points_awarded: 4 },
+      ],
+    });
+    expect(ctx.actionLeaderboard({}).leaderboard[0].points_today).toBe(4);
+    vi.useRealTimers();
+  });
+
+  it('falls back to due_date for rows with no completion time', () => {
+    // A missed occurrence records its penalty but never a completed_at.
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 7, 15, 12, 0, 0));
+    const { ctx } = loadBackend({
+      People: [{ person_id: 'kid', name: 'Kid', points_total: 0 }],
+      Chores: [{ chore_id: 'c1' }],
+      Assignments: [
+        { assignment_id: 'a1', chore_id: 'c1', person_id: 'kid', due_date: '2026-08-15',
+          status: 'skipped', points_awarded: -2 },
+      ],
+    });
+    expect(ctx.actionLeaderboard({}).leaderboard[0].points_today).toBe(-2);
+    vi.useRealTimers();
+  });
+});

@@ -53,10 +53,18 @@ function usesNthWeekday(chore) {
 // so both legacy UTC `completed_at` values (written before the #31 fix) and new
 // local-offset ones resolve to the correct local day. Empty/invalid → false.
 function completedOnLocalDate(timestamp, todayISO) {
-  if (!timestamp) return false;
+  return localDateOf(timestamp) === todayISO;
+}
+
+// The local calendar date (yyyy-MM-dd, script timezone) a stored timestamp falls
+// on, or '' when there isn't one. Parsing the instant and reformatting is what
+// makes legacy UTC values resolve to the right local day — slicing the raw
+// string reads an evening completion as the following date.
+function localDateOf(timestamp) {
+  if (!timestamp) return '';
   var d = new Date(timestamp);
-  if (isNaN(d.getTime())) return false;
-  return formatDate(d) === todayISO;
+  if (isNaN(d.getTime())) return '';
+  return formatDate(d);
 }
 
 // ─── Lead-time / next-occurrence scheduling (v1.3.0, #21 + #23) ───────────────

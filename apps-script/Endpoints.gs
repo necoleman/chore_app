@@ -163,7 +163,12 @@ function actionLeaderboard(params) {
     if (!a.person_id || !totals[a.person_id]) return;
     var pts = parseInt(a.points_awarded, 10);
     if (!pts) return;
-    var when = String(a.completed_at || a.due_date || '').slice(0, 10);
+    // Resolve the completion INSTANT in the script timezone rather than slicing
+    // the stored string (#31 again). Legacy `completed_at` values are UTC, so an
+    // evening completion reads as the NEXT day from a raw slice — which put
+    // yesterday's points in today's bucket. actionToday has used
+    // completedOnLocalDate for this since v1.8.1; the leaderboard didn't.
+    var when = localDateOf(a.completed_at) || String(a.due_date || '').slice(0, 10);
     if (!when) return;
     if (when >= monthStart) totals[a.person_id].month += pts;
     if (when >= weekStart) totals[a.person_id].week += pts;
