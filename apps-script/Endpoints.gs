@@ -43,13 +43,13 @@ function actionToday(params) {
       location:         chore.location || '',
       description:      chore.description || '',
       frequency:        chore.frequency || '',
-      lead_days:        chore.name ? effectiveLeadDays(chore) : '',
+      lead_days:        visibleLeadDays(chore, a, today),
       // Cadence in days, for the Today screen's grouping/ordering (#38).
       period_days:      chore.name ? sortPeriodDays(chore) : 1,
       // Sinks to the end of its cadence group, e.g. after-dinner chores (#40).
       sort_last:        chore.sort_last === true || chore.sort_last === 'TRUE',
       // Manual one-offs sit outside the recurrence and are grouped separately.
-      is_one_off:       a.assigned_by === 'manual' || chore.frequency === 'once',
+      is_one_off:       isOneOffAssignment(a) || chore.frequency === 'once',
       points:           chore.points || 0,
       requires_approval: chore.requires_approval === true || chore.requires_approval === 'TRUE',
       person_id:        a.person_id || null,
@@ -68,6 +68,23 @@ function actionToday(params) {
   });
 
   return { assignments: result, people: people };
+}
+
+// The lead window the CLIENT should use for this assignment. Normally just the
+// chore's own `lead_days`, but an occurrence deliberately brought forward with
+// Add → "Surface early" (`auto_early`) keeps its real due date, so the chore's
+// window would hide it until that date arrives — the row would exist and be
+// invisible. Widen it just enough to reach today, recomputed on every request so
+// it stays visible right through to the due date (#43).
+function visibleLeadDays(chore, a, todayISO) {
+  var base = chore.name ? effectiveLeadDays(chore) : '';
+  if (a.assigned_by !== 'auto_early') return base;
+
+  var due = String(a.due_date || '').slice(0, 10);
+  if (!due) return base;
+  var daysUntil = daysBetween(parseISODate(due), parseISODate(todayISO));
+  if (daysUntil <= 0) return base; // already due — the normal window applies
+  return Math.max(parseInt(base, 10) || 1, daysUntil + 1);
 }
 
 function getWeekStart() {
@@ -521,11 +538,66 @@ function actionClaim(body) {
 
 // ─── POST: assign (manual assignment creation) ────────────────────────────────
 
+// Two intents behind the Manage Chores "Add" button (#43):
+//
+//   • **one-off** (default) — an EXTRA, due today, on top of the schedule. Marked
+//     `manual`, so it sits outside the recurrence entirely: never rolled forward,
+//     penalized, or counted toward the chore's miss streak, and the chore's own
+//     dates are untouched.
+//
+//   • **early** — the chore's genuine next occurrence, surfaced ahead of its
+//     appear date with its REAL due date intact. Equivalent to granting that one
+//     occurrence extra lead days. Marked `auto_early` so the Today filter widens
+//     its window enough to show it; everything else treats it as the ordinary
+//     auto occurrence it is.
+//
+// Bringing an occurrence forward stamps the cursor to its due date — the same
+// thing the generator does when it creates one. That's what makes "done early"
+// safe: the slot is consumed, so the chore cannot re-trigger on its original
+// date, and the occurrence AFTER it becomes next. No completion-time special
+// case is needed, because it is simply an occurrence.
 function actionAssign(body) {
   var choreId = body.chore_id;
   var personId = body.person_id || '';
-  var dueDate = body.due_date || todayStr();
 
+  if (body.mode === 'early') {
+    var chore = getRows('Chores').find(function(c) { return c.chore_id === choreId; });
+    if (!chore) throw new Error('No Chores row for chore_id: ' + choreId);
+
+    var next = nextDueForChore(chore, new Date());
+    if (!next) throw new Error('This chore has no next occurrence to bring forward');
+    var dueISO = formatDate(next);
+
+    var already = getRows('Assignments').find(function(a) {
+      return a.chore_id === choreId
+        && String(a.due_date || '').slice(0, 10) === dueISO
+        && !isOneOffAssignment(a);
+    });
+    if (already) throw new Error('That occurrence is already on the list');
+
+    var earlyId = choreId + '_' + dueISO.replace(/-/g, '');
+    appendRow('Assignments', {
+      assignment_id: earlyId,
+      chore_id: choreId,
+      person_id: personId,
+      due_date: dueISO,
+      status: 'open',
+      assigned_by: 'auto_early',
+    });
+
+    var updates = { last_generated_date: dueISO };
+    // Advance the rotation pointer as the generator would, so the sequence
+    // doesn't hand the next occurrence to the same person again.
+    if (personId) updates.rotation_last = personId;
+    updateRow('Chores', 'chore_id', choreId, updates);
+
+    invalidateCache('Assignments');
+    invalidateCache('Chores');
+    if (personId) sendAssignmentNotification(earlyId, personId);
+    return { assignment_id: earlyId, due_date: dueISO, early: true, success: true };
+  }
+
+  var dueDate = body.due_date || todayStr();
   var assignmentId = choreId + '_' + dueDate.replace(/-/g, '') + '_' + generateId('m').slice(-6);
   appendRow('Assignments', {
     assignment_id: assignmentId,
@@ -536,7 +608,7 @@ function actionAssign(body) {
     assigned_by: 'manual',
   });
   invalidateCache('Assignments');
-  return { assignment_id: assignmentId, success: true };
+  return { assignment_id: assignmentId, due_date: dueDate, success: true };
 }
 
 // ─── POST: reassign ───────────────────────────────────────────────────────────
@@ -734,16 +806,20 @@ function actionSetVacation(body) {
       }
     });
   } else {
-    // Chores whose only default assignee is this person.
-    var soleDefault = {};
+    // Chores this person is a default assignee of — either the sole one, or a
+    // member of a rotation. Originally sole-only, which orphaned every rotation
+    // chore: turning vacation ON unclaims ALL of their open rows regardless of
+    // how the chore is assigned, so a sole-only rule recovered a strict subset
+    // and the rest sat unclaimed forever.
+    var isDefaultFor = {};
     getRows('Chores').forEach(function(c) {
       var list = String(c.default_assignee || '')
         .split(',').map(function(s) { return s.trim(); }).filter(Boolean);
-      if (list.length === 1 && list[0] === personId) soleDefault[c.chore_id] = true;
+      if (list.indexOf(personId) !== -1) isDefaultFor[c.chore_id] = true;
     });
     var today = todayStr();
     getRows('Assignments').forEach(function(a) {
-      if (!a.person_id && a.status === 'open' && soleDefault[a.chore_id]) {
+      if (!a.person_id && a.status === 'open' && isDefaultFor[a.chore_id]) {
         var updates = { person_id: personId };
         // Same rule as claim/reassign (#38): taking ownership re-dates to today,
         // so nobody returns to a deadline that passed while they were away. The
@@ -803,12 +879,20 @@ function actionResetRotation(body) {
 //
 // Used by approve/reject, which may land days after the occurrence they concern
 // has already been superseded by the nightly roll-forward.
+// True for a manual one-off — either flavour (`manual` or `manual_replaces`).
+// Matched on the prefix rather than an exact value so a blank `assigned_by`
+// (a hand-added sheet row) still counts as part of the recurrence, which is the
+// safer default.
+function isOneOffAssignment(a) {
+  return String(a.assigned_by || '').indexOf('manual') === 0;
+}
+
 function liveOccurrence(choreId, excludeAssignmentId) {
   return getRows('Assignments')
     .filter(function(a) {
       return a.chore_id === choreId
         && a.assignment_id !== excludeAssignmentId
-        && a.assigned_by !== 'manual'
+        && !isOneOffAssignment(a)
         && (a.status === 'open' || a.status === 'pending_review');
     })
     .reduce(function(latest, a) {

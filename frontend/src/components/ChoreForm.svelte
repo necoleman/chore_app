@@ -133,7 +133,8 @@
       showToast('Name is required');
       return;
     }
-    // Keep lead_days within 1..<interval (blank stays blank → defaults to 1).
+    // Keep lead_days within 1..<interval. Blank stays blank, which means "use
+    // the cadence default" (weekly 4 / monthly 7 / interval min(N,7) / daily 1).
     if (LEAD_FREQS.includes(form.frequency) && form.lead_days !== '' && form.lead_days != null) {
       form.lead_days = Math.min(Math.max(1, parseInt(form.lead_days, 10) || 1), leadMax);
     }
@@ -299,6 +300,7 @@
       {#if LEAD_FREQS.includes(form.frequency)}
         <label class="field">
           <span class="label">Days visible before overdue (1–{leadMax})</span>
+          <span class="hint">Leave blank for the default: weekly 4, monthly 7, every-N-days {Math.min(parseInt(form.interval_days, 10) || 1, 7)}.</span>
           <input
             type="number"
             min="1"

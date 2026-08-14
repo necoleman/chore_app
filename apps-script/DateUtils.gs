@@ -128,14 +128,38 @@ function sortPeriodDays(chore) {
   }
 }
 
+// The default lead window when `lead_days` is blank, by cadence (#44). Bigger
+// jobs get more runway: a weekly chore due Sunday surfaces on Thursday, a
+// monthly one about a week ahead. Daily and once are pinned to 1 — they appear
+// on the day, and there is nothing meaningful to see them ahead of.
+//
+// These were the original v1.3.0 defaults. v1.3.2 flattened them all to 1 while
+// fixing a short-interval bug (a chore reappearing the next day and being
+// penalized about a day after its due date rather than after a full interval).
+// That bug was actually fixed by the `maxLead` cap below, which is independent —
+// so the defaults are restored here and the cap keeps the fix.
+function defaultLeadDays(chore) {
+  switch (chore.frequency) {
+    case 'weekly':
+    case 'custom':
+      return 4;
+    case 'monthly':
+      return 7;
+    case 'interval':
+      return Math.min(parseInt(chore.interval_days, 10) || 1, 7);
+    default: // daily, once
+      return 1;
+  }
+}
+
 // The lead window (#23): how many days the chore is visible before it goes
 // overdue, so it appears `lead − 1` days before its due date. Rules: at least 1,
-// strictly less than the recurrence interval, and **defaults to 1** (early
-// appearance is opt-in per chore via the `lead_days` column). Daily/once are
-// always 1 (they appear on the due date).
+// strictly less than the recurrence interval, and defaulting by cadence when the
+// `lead_days` column is blank. Daily/once are always 1 (they appear on the due
+// date). An explicit `lead_days` always wins, subject to the cap.
 function effectiveLeadDays(chore) {
   var raw = parseInt(chore.lead_days, 10);
-  var lead = (raw && raw >= 1) ? raw : 1;         // > 0, default 1
+  var lead = (raw && raw >= 1) ? raw : defaultLeadDays(chore);
   var period = recurrencePeriodDays(chore);
   var maxLead = period > 1 ? period - 1 : 1;      // < interval (daily/once → 1)
   return Math.min(lead, maxLead);

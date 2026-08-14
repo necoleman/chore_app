@@ -10,12 +10,31 @@
   // claimable is a real answer rather than an omission (#39). onSelect receives
   // null in that case.
   export let allowUnassigned = false;
+  // Optional choice shown above the person grid, e.g. "extra" vs "instead of the
+  // next scheduled one". Pass null to hide it entirely. Bindable.
+  export let modes = null;
+  export let selectedMode = null;
 </script>
 
 <div class="backdrop" use:portal on:click|self={onClose}>
   <div class="sheet">
     <div class="sheet-handle"></div>
     <h2 class="sheet-title">{title}</h2>
+    {#if modes}
+      <div class="modes">
+        {#each modes as m (m.value)}
+          <button
+            class="mode-btn"
+            class:mode-btn--on={selectedMode === m.value}
+            on:click={() => (selectedMode = m.value)}
+          >
+            <span class="mode-label">{m.label}</span>
+            <span class="mode-hint">{m.hint}</span>
+          </button>
+        {/each}
+      </div>
+    {/if}
+
     <div class="person-grid">
       {#if allowUnassigned}
         <button
@@ -114,6 +133,42 @@
     justify-content: center;
     font-size: 18px;
     font-weight: 700;
+  }
+
+  .modes {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .mode-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    text-align: left;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1.5px solid #e5e7eb;
+    background: #fff;
+    cursor: pointer;
+  }
+
+  .mode-btn--on {
+    border-color: #16a34a;
+    background: #f0fdf4;
+  }
+
+  .mode-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #111827;
+  }
+
+  .mode-hint {
+    font-size: 11px;
+    color: #6b7280;
+    line-height: 1.3;
   }
 
   .avatar--none {

@@ -132,11 +132,15 @@ export async function skipAssignment(assignment_id, admin_person_id) {
 // "Add" button on each Manage Chores row. The assignment sits outside the
 // recurrence — the generator never rolls it forward or penalizes it — so the
 // chore's own schedule is untouched.
-export async function assignChoreToday(chore_id, person_id) {
+//
+// `mode: 'early'` instead surfaces the chore's REAL next occurrence ahead of its
+// appear date, keeping its true due date — the same effect as granting that one
+// occurrence extra lead days. It's an ordinary auto occurrence from then on.
+export async function assignChoreToday(chore_id, person_id, mode = 'oneoff') {
   try {
-    await post('assign', { chore_id, person_id: person_id || '' });
+    const res = await post('assign', { chore_id, person_id: person_id || '', mode });
     await refresh();
-    showToast('Added to today', 'success');
+    showToast(res?.early ? 'Brought forward' : 'Added to today', 'success');
     return true;
   } catch (e) {
     showToast(e.message || 'Could not add — try again');
