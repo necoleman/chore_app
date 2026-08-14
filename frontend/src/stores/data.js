@@ -55,7 +55,11 @@ export async function quickAddChore(name, person_id) {
       once_date: today(),
       default_assignee: person_id || '',
       points: 1,
-      requires_approval: false,
+      // Always needs approval. A quick-add is a chore someone invented for
+      // themselves, so nothing has vetted that it's real or that it was done —
+      // without review it would be a way to hand yourself points. An admin can
+      // clear the flag afterwards in the chore editor if it isn't wanted.
+      requires_approval: true,
       active: true,
     });
     await refresh(); // pulls the just-generated assignment onto Today

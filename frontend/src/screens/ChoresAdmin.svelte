@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { get as apiGet, post } from '../api/client.js';
   import { showToast } from '../stores/ui.js';
+  import { currentUser } from '../stores/user.js';
   import ChoreForm from '../components/ChoreForm.svelte';
   import PersonPicker from '../components/PersonPicker.svelte';
   import { assignChoreToday } from '../stores/data.js';
@@ -17,6 +18,17 @@
   let editingChore = null;   // null = not editing, object = edit existing
   let assigningChore = null; // chore awaiting an assignee for a one-off today
   let assignMode = 'oneoff'; // 'oneoff' | 'early' — see ADD_MODES below
+
+  // The screen is open to everyone, but only admins get the chore-authoring
+  // controls: creating (+ Add), Edit, and Reset rotation. Non-admins keep the
+  // per-row Add button, so they can pull a chore onto Today without being able
+  // to define one or change what an existing one is worth.
+  //
+  // This is presentation only — see actionAddChore/actionUpdateChore, which
+  // don't check who is calling. It stops a kid using the app, not a kid using
+  // the network tab.
+  $: isAdmin = $currentUser?.is_admin;
+  $: selfId = $currentUser?.person_id;
 
   // Two intents behind the Add button (#43):
   //   one-off — an extra due today, leaving the chore's schedule untouched
@@ -176,8 +188,10 @@
 
 <div class="screen">
   <header class="header">
-    <h1 class="title">Manage Chores</h1>
-    <button class="add-btn" on:click={() => openAdd()}>+ Add</button>
+    <h1 class="title">{isAdmin ? 'Manage Chores' : 'Chores'}</h1>
+    {#if isAdmin}
+      <button class="add-btn" on:click={() => openAdd()}>+ Add</button>
+    {/if}
   </header>
 
   {#if loading}
@@ -232,7 +246,7 @@
               <CollapsibleDescription text={chore.description} />
             </div>
             <div class="chore-actions">
-              {#if isRotation(chore)}
+              {#if isAdmin && isRotation(chore)}
                 <button
                   class="reset-rotation-btn"
                   disabled={resetBusy === chore.chore_id}
@@ -240,7 +254,9 @@
                 >Reset rotation</button>
               {/if}
               <button class="add-today-btn" on:click={() => (assigningChore = chore)}>Add</button>
-              <button class="edit-btn" on:click={() => (editingChore = chore)}>Edit</button>
+              {#if isAdmin}
+                <button class="edit-btn" on:click={() => (editingChore = chore)}>Edit</button>
+              {/if}
             </div>
           </div>
         {/each}
@@ -260,7 +276,9 @@
                 </div>
               {/if}
             </div>
-            <button class="edit-btn" on:click={() => (editingChore = chore)}>Edit</button>
+            {#if isAdmin}
+              <button class="edit-btn" on:click={() => (editingChore = chore)}>Edit</button>
+            {/if}
           </div>
         {/each}
       </section>
@@ -269,9 +287,11 @@
     {#if noResults}
       <div class="no-results">
         <p class="no-results-text">No chores match “{searchTerm}”.</p>
-        <button class="add-btn" on:click={() => openAdd(searchTerm.trim())}>
-          + Add “{searchTerm.trim()}”
-        </button>
+        {#if isAdmin}
+          <button class="add-btn" on:click={() => openAdd(searchTerm.trim())}>
+            + Add “{searchTerm.trim()}”
+          </button>
+        {/if}
       </div>
     {/if}
   {/if}
@@ -283,9 +303,9 @@
      "this needs doing sooner than planned but I don't know who'll do it". -->
 {#if assigningChore}
   <PersonPicker
-    {people}
-    selected={defaultAssigneeFor(assigningChore)}
-    allowUnassigned={true}
+    people={isAdmin ? people : people.filter((p) => p.person_id === selfId)}
+    selected={isAdmin ? defaultAssigneeFor(assigningChore) : selfId}
+    allowUnassigned={isAdmin}
     title="Add this chore"
     modes={addModes}
     bind:selectedMode={assignMode}

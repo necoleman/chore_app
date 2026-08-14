@@ -63,6 +63,14 @@ Run `runNightlyGenerator` by hand, then check:
 - a weekly chore still lands on its usual day
 - a monthly "second Friday" chore still resolves correctly
 
+Then sign in as a non-admin and check the Chores tab:
+
+- the tab is now **visible** to them, titled "Chores" rather than "Manage Chores"
+- each row has **Add** and nothing else — no Edit, no Reset rotation
+- there is no **+ Add** button in the header
+- tapping Add offers only themselves as assignee, with no Unassigned option
+- a chore added from Today's quick-add shows a **Needs approval** tag
+
 The app footer should read **v1.10.0**.
 
 ---
@@ -98,7 +106,19 @@ Also deleted `sortPeriodDays`: cadence grouping keys straight off `frequency` no
 which is more correct under this model — a Mon/Thu chore belongs under **Every
 day**, where the old arithmetic filed it under This week.
 
-Full write-up in `2026_06_enhancements.md`, entry #45.
+**Non-admins can now reach the Chores tab.** They get a read-only view whose only
+control is the per-row **Add** button, so they can pull a chore onto Today without
+being able to create one or change what an existing one is worth. Quick-adds from
+the Today screen now always require approval — an invented chore has nothing
+vetting that it's real, so without review it would be a way to hand yourself
+points.
+
+This is a **UI restriction, not an enforced permission.** `actionAddChore` and
+`actionUpdateChore` don't check who is calling — no endpoint ever has. Hiding the
+buttons stops a kid using the app; it wouldn't stop one using the browser's
+network tab. See entry #47 for what enforcing it would take.
+
+Full write-up in `2026_06_enhancements.md`, entries #45 and #47.
 
 ---
 
