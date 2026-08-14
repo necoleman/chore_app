@@ -74,7 +74,7 @@ describe('groupKeyFor (#38)', () => {
     expect(groupKeyFor(a({ frequency: 'interval' }))).toBe('monthly');
   });
 
-  it('puts a daily chore pinned to weekdays under Daily, not Weekly (#45)', () => {
+  it('puts a daily chore pinned to weekdays under Today, not This Week (#45)', () => {
     // The whole point of folding `custom` into daily: Mon/Thu is a discipline,
     // so it groups with the dailies rather than with "sometime this week".
     expect(groupKeyFor(a({ frequency: 'daily', weekday_due: '1,4' }))).toBe('daily');
