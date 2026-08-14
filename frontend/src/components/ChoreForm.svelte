@@ -68,9 +68,17 @@
   // Ensure a weekly chore always has a valid 0–6 weekday so the <select> and the
   // stored value agree (a blank/leftover value would show Sunday but save empty).
   // Guarded so it only fills a missing value — never overwrites a real choice.
-  // Weekly needs exactly one weekday. This also cleans up after a frequency
-  // switch: a daily chore pinned to "1,4" changing to weekly would otherwise
-  // carry a list into a single-choice field.
+  // Only daily can hold MULTIPLE weekdays. Switching a pinned daily ("1,4") to
+  // any other frequency would otherwise leave a list behind: the single-choice
+  // select matches nothing and renders blank, while the stored value still says
+  // Monday — so an interval chore would silently snap to Mondays despite the
+  // field reading "Any day". Trim to the first entry.
+  $: if (form.frequency !== 'daily' && String(form.weekday_due ?? '').includes(',')) {
+    form.weekday_due = String(form.weekday_due).split(',')[0].trim();
+  }
+
+  // Weekly additionally needs exactly one weekday — blank would save a chore
+  // that never generates.
   $: if (form.frequency === 'weekly' && !/^[0-6]$/.test(String(form.weekday_due))) {
     form.weekday_due = '0';
   }

@@ -159,7 +159,8 @@ notification permission.
 
 **Nightly generator (runs ~12:01am)**
 For every active chore, determine whether it's due today:
-- `daily` / `weekly` / `custom` — derived purely from today's date/weekday,
+- `daily` / `weekly` — derived purely from today's date/weekday (daily with
+  `weekday_due` set is due only on those days),
   same as v1, recomputed fresh each run.
 - `monthly` — due if today's day-of-month matches `monthly_day` (clamped to
   month length).
@@ -345,7 +346,7 @@ leave `requires_approval` off and behave exactly as in v1.
 1. Sheet + Apps Script API (`today`, `complete`, `skip` endpoints first)
 2. Bare-bones PWA: Today screen, mark-done, polling for refresh
 3. Add to Home Screen onboarding flow + FCM token registration
-4. Nightly generator (daily/weekly/custom first) + reminder push trigger
+4. Nightly generator (daily/weekly first) + reminder push trigger
 5. Points/streaks logic + Leaderboard screen
 6. Admin screen for chores, including `monthly`/`interval` frequency fields
 7. Approval workflow: `requires_approval`, `pending_review` status,
