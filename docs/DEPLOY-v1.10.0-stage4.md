@@ -55,7 +55,17 @@ would be misleading.
 them anymore, and keeping them means a rollback doesn't lose data. Delete them
 once you're happy, in a week or two.
 
-## 4. Verify
+## 4. Merge `stage-4` into `main`
+
+This is what ships the frontend — GitHub Pages rebuilds from `main` automatically.
+
+**Do it in this order, after steps 2 and 3.** The new frontend expects
+`weekday_due` in the payload, so merging before the Apps Script is live gives it
+an old backend to talk to. Going the other way round is safe: the old frontend
+briefly shows a migrated Mon/Thu chore as a plain daily one, which is cosmetic and
+lasts only until the merge lands.
+
+## 5. Verify
 
 Run `runNightlyGenerator` by hand, then check:
 
