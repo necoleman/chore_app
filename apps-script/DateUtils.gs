@@ -77,6 +77,15 @@ function completionInstant(a) {
 // on, or '' when there isn't one. Parsing the instant and reformatting is what
 // makes legacy UTC values resolve to the right local day — slicing the raw
 // string reads an evening completion as the following date.
+//
+// THE SHEET HOLDS THREE TIMESTAMP FORMATS AND ALWAYS WILL — legacy UTC from
+// before v1.8, local-offset ISO since, and some date-only values. That mix is
+// deliberate and left alone: normalising historical rows was considered and
+// declined, because rewriting real history is riskier than reading it carefully.
+//
+// So: never derive a date from a timestamp by slicing it. Use this, or
+// completionInstant() when comparing. Getting that wrong has produced the same
+// bug three times over (#31, #32, #46), each in a different piece of code.
 function localDateOf(timestamp) {
   if (!timestamp) return '';
   var d = new Date(timestamp);
