@@ -86,12 +86,24 @@
   // Lead window (#23) applies to non-daily / non-once cadences. It defaults to 1
   // (appears on the due date) and must be ≥1 and < the recurrence interval.
   const LEAD_FREQS = ['weekly', 'monthly', 'interval'];
+  $: intervalDaysSet = /^\d+$/.test(String(form.interval_days ?? '').trim());
+
   $: leadMax =
     form.frequency === 'monthly'
       ? 27
       : form.frequency === 'interval'
         ? Math.max(1, (parseInt(form.interval_days, 10) || 2) - 1)
         : 6; // weekly (7-day cycle)
+
+  // The default the backend will apply if this is left blank — mirrors
+  // defaultLeadDays() in DateUtils.gs. Shown so the placeholder and the hint
+  // agree with what actually happens.
+  $: defaultLeadHint =
+    form.frequency === 'monthly'
+      ? 7
+      : form.frequency === 'interval'
+        ? Math.min(parseInt(form.interval_days, 10) || 7, 7)
+        : 4; // weekly
 
   const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const WEEK_ORDINALS = [
@@ -351,17 +363,26 @@
         </label>
       {/if}
 
-      {#if LEAD_FREQS.includes(form.frequency)}
+      <!-- Hidden until an interval chore has its interval: both the range and the
+           default are derived from it, so with it blank the field read
+           "(1–1) … every-N-days 1" — nonsense at exactly the moment you're
+           reading it. -->
+      {#if LEAD_FREQS.includes(form.frequency) && (form.frequency !== 'interval' || intervalDaysSet)}
         <label class="field">
-          <span class="label">Days visible before overdue (1–{leadMax})</span>
-          <span class="hint">Leave blank for the default: weekly 4, monthly 7, every-N-days {Math.min(parseInt(form.interval_days, 10) || 1, 7)}.</span>
+          <span class="label">Days visible before overdue</span>
+          <!-- The every-N-days default depends on the interval, so only show a
+               concrete number when we're actually on an interval chore. -->
+          <span class="hint">
+            Leave blank for default: weekly 4, monthly 7, every-N-days
+            {form.frequency === 'interval' ? defaultLeadHint : 'up to 7'}. Max {leadMax}.
+          </span>
           <input
             type="number"
             min="1"
             max={leadMax}
             bind:value={form.lead_days}
             class="input input--sm"
-            placeholder="default 1"
+            placeholder="default {defaultLeadHint}"
           />
         </label>
       {/if}
