@@ -36,20 +36,28 @@ export function filterTodayAssignments(assignments, todayStr) {
 // One-offs lead because nothing regenerates them. A missed daily chore returns
 // tomorrow by itself; a missed one-off just sits wherever it was filed, and it
 // exists precisely because somebody asked for it specially.
+// Every label answers ONE question — how often does this come back? — and none of
+// them answers "when is it due", which the per-card date chips already do.
+//
+// That's deliberate and worth not undoing. Deadline-flavoured headings can't work
+// here: everything visible on Today is inside its lead window, so nearly every
+// card is due this week. "Every day" also stopped being true once daily chores
+// could be pinned to Mon/Thu (#45), and "Monthly and occasional" read as
+// *not now* when in fact those cards are up right now.
 export const GROUPS = [
   { key: 'oneoff',  label: 'One-off' },
-  { key: 'daily',   label: 'Every day' },
-  { key: 'weekly',  label: 'This week' },
-  { key: 'monthly', label: 'Monthly and occasional' },
+  { key: 'daily',   label: 'Daily' },
+  { key: 'weekly',  label: 'Weekly' },
+  { key: 'monthly', label: 'Monthly & longer' },
 ];
 
 // Which group an assignment belongs to. One-offs are routed by *what they are* —
 // a manual assignment or a `once` chore — before cadence is considered at all.
 //
 // Everything else keys straight off `frequency` (#45). A daily chore pinned to
-// Mon/Thu belongs under Every day, because that's what pinning it means: due on
+// Mon/Thu belongs under Daily, because that's what pinning it means: due on
 // those days, not "sometime this week". The old computed-period approach would
-// have filed it under This week.
+// have filed it under Weekly.
 export function groupKeyFor(a) {
   if (a.is_one_off || String(a.assigned_by || '').startsWith('manual') || a.frequency === 'once') {
     return 'oneoff';

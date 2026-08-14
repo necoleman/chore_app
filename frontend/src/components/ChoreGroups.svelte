@@ -48,9 +48,11 @@
   }
 
   /* Warm to cool to neutral reads as an urgency ramp without a legend. */
+  /* Daily teal, weekly coral. Keep these in step with the stripe and frequency
+     chip in ChoreCard — the three are read as one signal. */
   .dot--oneoff { background: #7f77dd; }
-  .dot--daily { background: #d85a30; }
-  .dot--weekly { background: #1d9e75; }
+  .dot--daily { background: #1d9e75; }
+  .dot--weekly { background: #d85a30; }
   .dot--monthly { background: #888780; }
 
   .group-title {

@@ -59,7 +59,7 @@ once you're happy, in a week or two.
 Run `runNightlyGenerator` by hand, then check:
 
 - chores that were `custom` now read `daily` with weekdays in `weekday_due`
-- they appear under **Every day** on the Today screen, not This week
+- they appear under **Daily** on the Today screen, not Weekly
 - a weekly chore still lands on its usual day
 - a monthly "second Friday" chore still resolves correctly
 
@@ -103,8 +103,18 @@ snapped date, so the schedule drifts a little later each cycle. That was chosen
 deliberately, but it's worth knowing.
 
 Also deleted `sortPeriodDays`: cadence grouping keys straight off `frequency` now,
-which is more correct under this model — a Mon/Thu chore belongs under **Every
-day**, where the old arithmetic filed it under This week.
+which is more correct under this model — a Mon/Thu chore belongs under **Daily**,
+where the old arithmetic filed it under Weekly.
+
+**The Today group headings are renamed** to One-off / Daily / Weekly / Monthly &
+longer. The groupings themselves are unchanged — only the labels. Each one now
+answers a single question, *how often does this come back?*, and none of them
+answers *when is it due*, which the per-card date chips already do precisely.
+Deadline-flavoured headings couldn't work: everything on Today is inside its lead
+window, so nearly every card is due this week, which made "Monthly and occasional"
+read as *not now* when those cards are up right now. "Every day" had also stopped
+being true once daily chores could be pinned to Mon/Thu. Daily and Weekly also
+swap colours — daily is teal, weekly coral.
 
 **Non-admins can now reach the Chores tab.** They get a read-only view whose only
 control is the per-row **Add** button, so they can pull a chore onto Today without
