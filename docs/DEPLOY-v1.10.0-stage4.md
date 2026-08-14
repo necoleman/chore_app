@@ -17,11 +17,12 @@ cd frontend && npm test
 
 Never executed on the authoring side — node isn't installed there.
 
-## 2. Apps Script — THREE files
+## 2. Apps Script — TWO files
 
 - `DateUtils.gs`
 - `Endpoints.gs`
-- `Generator.gs`
+
+`Generator.gs` is **not** changed by this stage — leave it alone.
 
 Then **Deploy → Manage deployments → Edit → New version → Deploy**.
 
