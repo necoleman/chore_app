@@ -4,7 +4,7 @@
 // can be unit-tested directly (the components delegate to these functions inside
 // their reactive `$:` blocks). Keep these pure — no stores, no side effects.
 
-import { appearDate } from './dueDates.js';
+import { appearDate, localDateOf } from './dueDates.js';
 
 // Assignments to show on the Today screen for a given local date string (yyyy-MM-dd):
 // finished items show when due today, plus a chore *completed* today stays on
@@ -20,7 +20,7 @@ export function filterTodayAssignments(assignments, todayStr) {
     if (!d) return false;
     if (a.status === 'done' || a.status === 'skipped') {
       if (d === todayStr) return true;
-      return a.status === 'done' && a.completed_at?.slice(0, 10) === todayStr;
+      return a.status === 'done' && localDateOf(a.completed_at) === todayStr;
     }
     return appearDate(d, a.lead_days) <= todayStr;
   });

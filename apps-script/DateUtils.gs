@@ -56,6 +56,23 @@ function completedOnLocalDate(timestamp, todayISO) {
   return localDateOf(timestamp) === todayISO;
 }
 
+// A comparable instant for an assignment: when the work happened. Uses the
+// parsed completion timestamp, falling back to the due date at local midnight
+// for rows that never had one — a missed occurrence, say. Returns 0 when there
+// is nothing to compare.
+//
+// Exists because `completed_at` appears in three shapes across a long-lived
+// sheet (legacy UTC, local-offset ISO, date-only), and comparing those as
+// strings is not meaningful.
+function completionInstant(a) {
+  if (a.completed_at) {
+    var d = new Date(a.completed_at);
+    if (!isNaN(d.getTime())) return d.getTime();
+  }
+  var due = String(a.due_date || '').slice(0, 10);
+  return due ? parseISODate(due).getTime() : 0;
+}
+
 // The local calendar date (yyyy-MM-dd, script timezone) a stored timestamp falls
 // on, or '' when there isn't one. Parsing the instant and reformatting is what
 // makes legacy UTC values resolve to the right local day — slicing the raw

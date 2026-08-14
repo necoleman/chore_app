@@ -107,21 +107,29 @@ function actionChores(params) {
   var chores = getRows('Chores');
 
   // Compute "last done" per chore (#9): the most recent completion among done
-  // assignments, keyed by chore_id. Uses completed_at, falling back to due_date.
+  // assignments, keyed by chore_id.
+  //
+  // Compared as INSTANTS, not as strings (#46). completed_at exists in three
+  // shapes across the sheet's history — legacy UTC, local-offset ISO, and
+  // date-only — and string comparison across them is meaningless: the same
+  // moment written as "…T01:00:00Z" sorts above "…T20:00:00-05:00" despite
+  // being identical. The displayed value is the resolved LOCAL date.
   var lastDone = {};
   getRows('Assignments').forEach(function(a) {
     if (a.status !== 'done') return;
-    var when = a.completed_at || a.due_date || '';
-    if (!when) return;
-    if (!lastDone[a.chore_id] || when > lastDone[a.chore_id]) {
-      lastDone[a.chore_id] = when;
+    var t = completionInstant(a);
+    if (!t) return;
+    var d = localDateOf(a.completed_at) || String(a.due_date || '').slice(0, 10);
+    if (!d) return;
+    if (!lastDone[a.chore_id] || t > lastDone[a.chore_id].t) {
+      lastDone[a.chore_id] = { t: t, date: d };
     }
   });
 
   var result = chores.map(function(c) {
     var row = {};
     for (var k in c) { if (c.hasOwnProperty(k)) row[k] = c[k]; }
-    row.last_done = lastDone[c.chore_id] || '';
+    row.last_done = (lastDone[c.chore_id] || {}).date || '';
     return row;
   });
 
@@ -218,11 +226,10 @@ function actionHistory(params) {
     return true;
   });
 
-  // Sort descending by completed_at (or due_date as fallback)
+  // Sort descending by when the work actually happened. Compared as instants
+  // rather than strings, for the same reason as last_done above (#46).
   filtered.sort(function(a, b) {
-    var ta = a.completed_at || a.due_date || '';
-    var tb = b.completed_at || b.due_date || '';
-    return tb.localeCompare(ta);
+    return completionInstant(b) - completionInstant(a);
   });
 
   var result = filtered.slice(0, limit).map(function(a) {
@@ -347,7 +354,7 @@ function actionApprove(body) {
   // reviewing it — an approval three days later must not push the cadence out.
   anchorIntervalOnCompletion(
     assignment.chore_id,
-    String(assignment.completed_at || '').slice(0, 10) || todayStr()
+    localDateOf(assignment.completed_at) || todayStr()
   );
 
   invalidateCache('Assignments');

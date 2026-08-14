@@ -1018,3 +1018,59 @@ describe('leaderboard buckets by the LOCAL completion day (#46)', () => {
     vi.useRealTimers();
   });
 });
+
+describe('last_done and History compare instants, not strings (#46)', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('last_done reports the local date, not the raw UTC one', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 7, 15, 12, 0, 0));
+    const { ctx } = loadBackend({
+      People: [{ person_id: 'kid' }],
+      Chores: [{ chore_id: 'c1', name: 'Dishes' }],
+      Assignments: [
+        // 01:00Z on Aug 15 is 8pm Central on Aug 14.
+        { assignment_id: 'a1', chore_id: 'c1', person_id: 'kid', due_date: '2026-08-14',
+          status: 'done', completed_at: '2026-08-15T01:00:00Z' },
+      ],
+    });
+    expect(ctx.actionChores({}).chores[0].last_done).toBe('2026-08-14');
+    vi.useRealTimers();
+  });
+
+  it('picks the genuinely latest completion across mixed timestamp formats', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 7, 15, 12, 0, 0));
+    const { ctx } = loadBackend({
+      People: [{ person_id: 'kid' }],
+      Chores: [{ chore_id: 'c1', name: 'Dishes' }],
+      Assignments: [
+        // Aug 14, 11pm Central — legacy UTC, so stored as "T04:00:00Z".
+        { assignment_id: 'old', chore_id: 'c1', person_id: 'kid', due_date: '2026-08-14',
+          status: 'done', completed_at: '2026-08-15T04:00:00Z' },
+        // Aug 15, 2am Central — genuinely LATER, but "T02…" sorts BELOW "T04…",
+        // so a string comparison picks the older row.
+        { assignment_id: 'new', chore_id: 'c1', person_id: 'kid', due_date: '2026-08-15',
+          status: 'done', completed_at: '2026-08-15T02:00:00-05:00' },
+      ],
+    });
+    expect(ctx.actionChores({}).chores[0].last_done).toBe('2026-08-15');
+    vi.useRealTimers();
+  });
+
+  it('History orders by instant, so a legacy row does not jump the queue', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 7, 15, 12, 0, 0));
+    const { ctx } = loadBackend({
+      People: [{ person_id: 'kid', name: 'Kid' }],
+      Chores: [{ chore_id: 'c1', name: 'Dishes' }],
+      Assignments: [
+        // Same pair as above: the legacy row is EARLIER in fact but sorts later
+        // as a string, so this fails on the old comparison.
+        { assignment_id: 'older', chore_id: 'c1', person_id: 'kid', due_date: '2026-08-14',
+          status: 'done', completed_at: '2026-08-15T04:00:00Z' },
+        { assignment_id: 'newer', chore_id: 'c1', person_id: 'kid', due_date: '2026-08-15',
+          status: 'done', completed_at: '2026-08-15T02:00:00-05:00' },
+      ],
+    });
+    expect(ctx.actionHistory({}).history.map((h) => h.assignment_id)).toEqual(['newer', 'older']);
+    vi.useRealTimers();
+  });
+});

@@ -130,6 +130,15 @@ export function nextDueLabel(chore, todayStr = today()) {
   return shortDate(d);
 }
 
+// The local calendar date a stored timestamp falls on. Mirrors localDateOf() in
+// DateUtils.gs: parse the instant and reformat, rather than slicing the raw
+// string, so legacy UTC values resolve to the right local day (#46).
+export function localDateOf(timestamp) {
+  if (!timestamp) return '';
+  const d = new Date(timestamp);
+  return Number.isNaN(d.getTime()) ? '' : formatDate(d);
+}
+
 // The date an assignment first appears on Today: due_date minus the lead window
 // (leadDays − 1 days early; leadDays is the effective value sent by the backend,
 // defaulting to 1 = appears on its due date). Returns a yyyy-MM-dd string.
