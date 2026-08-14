@@ -84,6 +84,10 @@ weekly but day *names* for custom — two incompatible formats in one column, wh
 is what made the Chores tab unreadable. The new one is always weekday numbers,
 0 = Sunday; most frequencies just use a list of one.
 
+**Careful with short intervals.** Snapping "every 3 days" to Sundays makes it
+effectively weekly — the snap overrides the interval, permanently. It only makes
+sense when the interval is comfortably longer than a week. Nothing blocks it.
+
 **Interval chores can now land on a chosen weekday.** Set `weekday_due` and the
 occurrence rolls forward to the first such day after the interval elapses — handy
 for keeping big jobs on a weekend. Note the next interval counts from that

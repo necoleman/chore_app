@@ -935,3 +935,34 @@ describe('migrateWeekdayDue (#45)', () => {
     expect(read('Chores').find((c) => c.chore_id === 'bad').frequency).toBe('custom');
   });
 });
+
+describe('re-anchoring an interval chore honours weekday_due (#45)', () => {
+  it('snaps the new start_date instead of writing it raw', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 7, 10, 12, 0, 0));
+    const { ctx, read } = loadBackend({
+      Chores: [{ chore_id: 'c1', frequency: 'interval', interval_days: '90', weekday_due: '0',
+                 start_date: '2026-08-10', last_generated_date: '2026-08-10', active: true }],
+      Assignments: [{ assignment_id: 'a1', chore_id: 'c1', person_id: 'me',
+                      due_date: '2026-08-10', status: 'open', assigned_by: 'auto' }],
+    });
+    // Sept 15 2026 is a Tuesday; the chore is Sundays-only, so it must land on
+    // Sept 20 rather than the date typed in.
+    ctx.actionUpdateChore({ chore_id: 'c1', frequency: 'interval', start_date: '2026-09-15' });
+    expect(read('Assignments')[0].due_date).toBe('2026-09-20');
+    expect(read('Chores')[0].last_generated_date).toBe('2026-09-20');
+    vi.useRealTimers();
+  });
+
+  it('leaves the date alone when no weekday is set', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 7, 10, 12, 0, 0));
+    const { ctx, read } = loadBackend({
+      Chores: [{ chore_id: 'c1', frequency: 'interval', interval_days: '90',
+                 start_date: '2026-08-10', last_generated_date: '2026-08-10', active: true }],
+      Assignments: [{ assignment_id: 'a1', chore_id: 'c1', person_id: 'me',
+                      due_date: '2026-08-10', status: 'open', assigned_by: 'auto' }],
+    });
+    ctx.actionUpdateChore({ chore_id: 'c1', frequency: 'interval', start_date: '2026-09-15' });
+    expect(read('Assignments')[0].due_date).toBe('2026-09-15');
+    vi.useRealTimers();
+  });
+});

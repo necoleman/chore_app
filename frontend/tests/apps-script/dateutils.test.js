@@ -266,3 +266,34 @@ describe('weekday_due — one column for every frequency (#45)', () => {
                 last_generated_date: '2026-08-14' }, TODAY45)).toBe('2026-09-11');
   });
 });
+
+describe('how weekday snapping interacts with lead days (#45)', () => {
+  const { ctx } = loadBackend();
+
+  it('does not change the lead window itself — only when it opens', () => {
+    // The window is measured from the due date, so snapping moves the whole
+    // thing later rather than shrinking it.
+    const chore = { frequency: 'interval', interval_days: '90', weekday_due: '0' };
+    expect(ctx.effectiveLeadDays(chore)).toBe(7);           // min(90, 7), unchanged
+    expect(ctx.appearOffsetDays(chore)).toBe(6);            // still 6 days early
+    expect(ctx.effectiveLeadDays({ frequency: 'interval', interval_days: '90' })).toBe(7);
+  });
+
+  it('keeps the cap safe — snapping only ever widens the real gap', () => {
+    // The cap exists so an occurrence can't appear before the previous one is
+    // due. Snapping pushes the next due date LATER, so a cap computed from the
+    // raw interval stays conservative.
+    expect(ctx.effectiveLeadDays({ frequency: 'interval', interval_days: '5', weekday_due: '0' })).toBe(4);
+    expect(ctx.effectiveLeadDays({ frequency: 'interval', interval_days: '2', weekday_due: '0' })).toBe(1);
+  });
+
+  it('WARNING CASE: snapping a short interval effectively makes it weekly', () => {
+    // "Every 3 days, on Sundays" can only ever be Sundays — the snap overrides
+    // the interval entirely. Documented rather than blocked.
+    const nd = (c, d) => ctx.formatDate(ctx.nextDueForChore(c, d));
+    const chore = { frequency: 'interval', interval_days: '3', weekday_due: '0',
+                    last_generated_date: '2026-08-09' }; // a Sunday
+    // 09 + 3 = Aug 12 (Wed) → snapped forward to Sunday Aug 16, i.e. 7 days on.
+    expect(nd(chore, new Date(2026, 7, 10))).toBe('2026-08-16');
+  });
+});

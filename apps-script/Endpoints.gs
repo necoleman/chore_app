@@ -754,8 +754,15 @@ function reanchorIntervalAssignment(choreId, newDue) {
   if (mine.length !== 1) return;
   var a = mine[0];
   if (a.status !== 'open' || a.assigned_by !== 'auto') return;
-  updateRow('Assignments', 'assignment_id', a.assignment_id, { due_date: newDue });
-  updateRow('Chores', 'chore_id', choreId, { last_generated_date: newDue });
+
+  // Honour `weekday_due` here too (#45). Everywhere else an interval due date is
+  // computed it goes through snapToWeekday; writing the raw start_date would be
+  // the one path that lands a Sunday-only chore on a Tuesday.
+  var chore = getRows('Chores').find(function(c) { return c.chore_id === choreId; });
+  var dueISO = chore ? formatDate(snapToWeekday(parseISODate(newDue), chore)) : newDue;
+
+  updateRow('Assignments', 'assignment_id', a.assignment_id, { due_date: dueISO });
+  updateRow('Chores', 'chore_id', choreId, { last_generated_date: dueISO });
   invalidateCache('Assignments');
   invalidateCache('Chores');
 }
