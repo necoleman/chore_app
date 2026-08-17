@@ -450,7 +450,7 @@ Note a recurring **daily** chore can never display as overdue: its regeneration 
 
 **Manage Chores extras:** Each row shows a **"Next: …"** tag for non-daily chores (a weekday name for weekly/custom, e.g. "Tuesday", or a date for monthly/interval/once; daily shows nothing). A **Sort** dropdown reorders by Default, Location, Assignee (unclaimed first), Periodicity, or Next due (soonest first). Long descriptions collapse to one line with a carat to expand.
 
-**Reassign / make unclaimed:** On the Today screen, a chore's three-dot menu can **Reassign** it to another person, **Move date**, or **Make unclaimed** (send it back to the "Available to Claim" bucket without picking a new person).
+**Three-dot menu (admins only):** On the Today screen, a chore's three-dot menu offers **Reassign**, then **Skip** or **Push**, then **Move date**. Reassign opens the person picker, which includes an **Unassigned** option — that's how you send a chore back to the "Available to Claim" bucket without picking a new person. **Skip** excuses the occurrence: nobody loses points and the chore returns on its normal schedule. **Push** replaces Skip on monthly and interval chores, moving *this* occurrence's due date out 7 days; the chore's own schedule and its next occurrence are untouched. Push counts 7 days from the due date rather than from today, so it works best on chores not yet due or due today — pushing something 10 days overdue leaves it 3 days overdue. Press it again for another week. One-off assignments keep **Skip** whatever their chore's frequency, since nothing regenerates them and Skip is the only way to clear one. The menu is only rendered for admins, and only on chores that are still open or awaiting review.
 
 ---
 

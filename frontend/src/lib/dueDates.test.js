@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { scheduledOn, nextDueDate, nextDueLabel, daysUntilDue, dueLabel, daysOverdue } from './dueDates.js';
+import { scheduledOn, nextDueDate, nextDueLabel, daysUntilDue, dueLabel, daysOverdue, shiftDate } from './dueDates.js';
 import { formatDate } from './utils.js';
 
 const TODAY = '2026-06-28'; // a Sunday (TZ pinned to America/Chicago in vitest config)
@@ -109,5 +109,31 @@ describe('daysUntilDue (countdown sort)', () => {
     expect(daysUntilDue({ frequency: 'weekly', weekday_due: '0' }, TODAY)).toBe(0);
     expect(daysUntilDue({ frequency: 'weekly', weekday_due: '2' }, TODAY)).toBe(2);
     expect(daysUntilDue({ frequency: 'once', once_date: '2026-07-04', last_generated_date: '2026-07-04' }, TODAY)).toBe(Infinity);
+  });
+});
+
+describe('shiftDate (backs Push, #50)', () => {
+  it('adds whole days', () => {
+    expect(shiftDate('2026-06-28', 7)).toBe('2026-07-05');
+  });
+
+  it('crosses a month boundary', () => {
+    expect(shiftDate('2026-06-30', 7)).toBe('2026-07-07');
+  });
+
+  it('crosses a year boundary', () => {
+    expect(shiftDate('2026-12-28', 7)).toBe('2027-01-04');
+  });
+
+  it('survives the spring-forward DST weekend on the local calendar', () => {
+    // US DST starts Sunday 2026-03-08. Adding 7 calendar days must land on the
+    // 15th, not the 14th — which is what naive ms arithmetic would give.
+    expect(shiftDate('2026-03-06', 7)).toBe('2026-03-13');
+    expect(shiftDate('2026-03-08', 7)).toBe('2026-03-15');
+  });
+
+  it('tolerates a full timestamp and blank input', () => {
+    expect(shiftDate('2026-06-28T00:00:00-05:00', 7)).toBe('2026-07-05');
+    expect(shiftDate('', 7)).toBe('');
   });
 });

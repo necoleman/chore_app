@@ -148,6 +148,13 @@ export function appearDate(dueStr, leadDays) {
   return formatDate(addDays(parseLocalDate(dueStr), -offset));
 }
 
+// Shift a yyyy-MM-dd string by whole days, staying on the local calendar.
+// Backs Push (#50), which moves one occurrence's due date and nothing else.
+export function shiftDate(dueStr, days) {
+  if (!dueStr) return dueStr;
+  return formatDate(addDays(parseLocalDate(String(dueStr).slice(0, 10)), days));
+}
+
 // Friendly label for a specific assignment's due date, shown on every Today
 // card. Today/Tomorrow, a weekday name for the next few days, otherwise a short
 // date. Past dates (overdue) fall through to the short date, e.g. "Jun 28".
