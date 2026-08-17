@@ -82,6 +82,19 @@ Then sign in as a non-admin and check the Chores tab:
 - tapping Add offers only themselves as assignee, with no Unassigned option
 - a chore added from Today's quick-add shows a **Needs approval** tag
 
+Then as an admin, on a Today card's ⋯ menu:
+
+- a **monthly or interval** chore offers **Push a week**; a daily or weekly one
+  offers **Skip this one**
+- Push moves the card's due date out 7 days and leaves the Chores tab untouched
+- **Reassign** offers **Unassigned**, and there's no separate "Make unclaimed"
+
+And on Manage Chores:
+
+- the **Filter** dropdown lists your real rooms, people and cadences with counts
+- picking one narrows the list; **Clear ✕** resets it
+- **Sort** offers only Default and Next due
+
 The app footer should read **v1.10.0**.
 
 ---
@@ -143,7 +156,29 @@ This is a **UI restriction, not an enforced permission.** `actionAddChore` and
 buttons stops a kid using the app; it wouldn't stop one using the browser's
 network tab. See entry #47 for what enforcing it would take.
 
-Full write-up in `2026_06_enhancements.md`, entries #45 and #47.
+**Push replaces Skip on monthly and interval chores** in a Today card's ⋯ menu.
+It moves that one occurrence's due date out 7 days, reusing the existing `bump`
+endpoint — which writes `due_date` and nothing else, so the chore's own schedule
+and its `last_generated_date` cursor are untouched and the next occurrence still
+lands on time. It counts 7 days from the **due date**, not from today, so pushing
+something already 10 days overdue leaves it 3 days overdue; press it again for
+another week. A one-off keeps **Skip** whatever its chore's frequency, since
+nothing regenerates it and Skip is the only way to clear one.
+
+**Make unclaimed** is gone from that menu — the Reassign picker now offers
+**Unassigned**, which does the same thing. Menu order is Reassign → Skip/Push →
+Move date. The menu was already admin-only and still is.
+
+**Manage Chores swaps most of its sorts for a filter.** One flat dropdown lists
+every room, person and cadence in use, each with a count, so narrowing to
+"Kitchen" is a single tap rather than choosing a filter type and then a value.
+Options are built from the loaded chores, so a new room appears by itself.
+Filtering by a person also matches rotations they belong to. Search now matches
+the **chore name** only, since the filter covers location and assignee better.
+Sort keeps **Default** (spreadsheet row order — rearranging rows in the Chores tab
+is still how you control it) and **Next due**.
+
+Full write-up in `2026_06_enhancements.md`, entries #45 through #51.
 
 ---
 
