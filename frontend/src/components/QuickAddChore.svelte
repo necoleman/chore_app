@@ -29,7 +29,10 @@
   <div class="sheet">
     <div class="sheet-handle"></div>
     <h2 class="sheet-title">Quick add chore</h2>
-    <p class="hint">Adds a one-time chore for today{isAdmin ? '' : ', assigned to you'}.</p>
+    <p class="hint">
+      Adds a one-time chore for today{isAdmin ? '' : ', assigned to you'}. Needs
+      approval before points are awarded.
+    </p>
 
     <form on:submit|preventDefault={handleSubmit} class="form">
       <!-- svelte-ignore a11y-autofocus -->

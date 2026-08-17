@@ -39,8 +39,8 @@ One spreadsheet, three tabs.
 | chore_id | string | short unique id |
 | name | string | e.g. "Take out trash" |
 | points | number | awarded on **acceptance**, not on marking complete |
-| frequency | enum | `daily`, `weekly`, `custom`, `monthly`, `interval` |
-| custom_days | string | comma list of weekdays, only used if `custom` |
+| frequency | enum | `daily`, `weekly`, `monthly`, `interval`, `once`. (`custom` was folded into `daily` — see `weekday_due`.) |
+| weekday_due | string | comma list of weekday numbers (0 = Sunday). One column for every frequency: blank on `daily` means every day, a list pins it to those days; `weekly` holds one; `monthly` pairs it with `monthly_week`; `interval` uses it to snap the due date onto that weekday. Replaces `custom_days` and `monthly_weekday`. |
 | **monthly_day** | number (nullable) | day-of-month (1–31), only used if `monthly`. If the month is shorter (e.g. 30 set, but month has 28 days), clamp to the last day of the month. |
 | **interval_days** | number (nullable) | only used if `interval`, e.g. `90` for "change air filters every 90 days" |
 | **last_generated_date** | date | written by the nightly generator; the anchor point for computing the next due date of `monthly`/`interval` chores. Not meant to be hand-edited (see §9). |
@@ -159,7 +159,8 @@ notification permission.
 
 **Nightly generator (runs ~12:01am)**
 For every active chore, determine whether it's due today:
-- `daily` / `weekly` / `custom` — derived purely from today's date/weekday,
+- `daily` / `weekly` — derived purely from today's date/weekday (daily with
+  `weekday_due` set is due only on those days),
   same as v1, recomputed fresh each run.
 - `monthly` — due if today's day-of-month matches `monthly_day` (clamped to
   month length).
@@ -345,7 +346,7 @@ leave `requires_approval` off and behave exactly as in v1.
 1. Sheet + Apps Script API (`today`, `complete`, `skip` endpoints first)
 2. Bare-bones PWA: Today screen, mark-done, polling for refresh
 3. Add to Home Screen onboarding flow + FCM token registration
-4. Nightly generator (daily/weekly/custom first) + reminder push trigger
+4. Nightly generator (daily/weekly first) + reminder push trigger
 5. Points/streaks logic + Leaderboard screen
 6. Admin screen for chores, including `monthly`/`interval` frequency fields
 7. Approval workflow: `requires_approval`, `pending_review` status,
@@ -378,7 +379,7 @@ edits or anything the admin UI doesn't expose yet) — but a few fields need
 care either way.
 
 **Safe to hand-edit directly in the sheet at any time:**
-`name`, `points`, `frequency`-related fields (`custom_days`, `monthly_day`,
+`name`, `points`, `frequency`-related fields (`weekday_due`, `monthly_day`,
 `interval_days`), `default_assignee`, `active`, `requires_approval`. Editing
 `points` only affects *future* completions — past `Assignments` rows keep
 their `points_awarded` snapshot, so a point-value rebalance across the whole

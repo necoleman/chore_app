@@ -5,7 +5,6 @@
 // dueDates.test.js.
 import { formatDate, today } from './utils.js';
 
-const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 const WEEKDAY_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 function parseLocalDate(str) {
@@ -21,11 +20,17 @@ function nthWeekdayOfMonth(year, month, weekday, n) {
   const offset = (weekday - first.getDay() + 7) % 7;
   return new Date(year, month, 1 + offset + (n - 1) * 7);
 }
+// Mirrors the backend's weekdaysDue (#45): one `weekday_due` column serving
+// every frequency, holding comma-separated weekday numbers (0 = Sunday).
+function weekdaysDue(chore) {
+  return String(chore.weekday_due == null ? '' : chore.weekday_due)
+    .split(',')
+    .map((d) => parseInt(String(d).trim(), 10))
+    .filter((n) => !Number.isNaN(n) && n >= 0 && n <= 6);
+}
+
 function usesNthWeekday(chore) {
-  return (
-    chore.monthly_week !== '' && chore.monthly_week != null &&
-    chore.monthly_weekday !== '' && chore.monthly_weekday != null
-  );
+  return chore.monthly_week !== '' && chore.monthly_week != null && weekdaysDue(chore).length > 0;
 }
 function addDays(date, n) {
   const d = new Date(date);
@@ -42,21 +47,18 @@ function shortDate(d) {
 // Calendar predicate: is the chore scheduled on this date (for the recurring
 // calendar frequencies)? Interval/once are handled directly in nextDueDate.
 export function scheduledOn(chore, date) {
+  const days = weekdaysDue(chore);
   switch (chore.frequency) {
     case 'daily':
-      return true;
+      // Blank weekday_due means every day; a list pins it to those days (#45).
+      return days.length === 0 || days.includes(date.getDay());
     case 'weekly':
-      return date.getDay() === parseInt(chore.custom_days, 10);
-    case 'custom': {
-      const days = (chore.custom_days || '').toLowerCase().split(',').map((s) => s.trim()).filter(Boolean);
-      return days.includes(DAY_NAMES[date.getDay()]);
-    }
+      return days.length > 0 && days.includes(date.getDay());
     case 'monthly': {
       if (usesNthWeekday(chore)) {
         const week = parseInt(chore.monthly_week, 10);
-        const weekday = parseInt(chore.monthly_weekday, 10);
-        if (!week || Number.isNaN(weekday)) return false;
-        const target = nthWeekdayOfMonth(date.getFullYear(), date.getMonth(), weekday, week);
+        if (!week) return false;
+        const target = nthWeekdayOfMonth(date.getFullYear(), date.getMonth(), days[0], week);
         return date.getDate() === target.getDate();
       }
       const md = parseInt(chore.monthly_day, 10);
@@ -66,6 +68,14 @@ export function scheduledOn(chore, date) {
     default:
       return false;
   }
+}
+
+// Mirrors the backend's snapToWeekday: roll an interval due date forward to the
+// chosen weekday, so a long-cadence chore lands on (say) a Sunday.
+function snapToWeekday(date, chore) {
+  const days = weekdaysDue(chore);
+  if (days.length === 0) return date;
+  return addDays(date, (days[0] - date.getDay() + 7) % 7);
 }
 
 // The next date (>= today) the chore is scheduled, or null if none/finished.
@@ -85,18 +95,18 @@ export function nextDueDate(chore, todayStr = today()) {
   if (freq === 'interval') {
     const n = parseInt(chore.interval_days, 10);
     if (!n) return null;
-    if (!chore.last_generated_date) return effStart; // first occurrence
+    if (!chore.last_generated_date) return snapToWeekday(effStart, chore);
     // last_generated_date is the current occurrence's due date. Advance by whole
     // intervals to the first occurrence on/after today, so a chore due today
     // reads "Today" (not last+N) and a past one rolls to its next date (#13).
     let d = parseLocalDate(chore.last_generated_date);
     while (d < todayDate) d = addDays(d, n);
-    return d;
+    return snapToWeekday(d, chore);
   }
 
-  if (freq === 'daily') return effStart;
+  if (freq === 'daily' && weekdaysDue(chore).length === 0) return effStart;
 
-  if (freq === 'weekly' || freq === 'custom' || freq === 'monthly') {
+  if (freq === 'daily' || freq === 'weekly' || freq === 'monthly') {
     let d = new Date(effStart);
     for (let i = 0; i < 400; i++) {
       if (scheduledOn(chore, d)) return d;
@@ -106,18 +116,27 @@ export function nextDueDate(chore, todayStr = today()) {
   return null;
 }
 
-// Friendly label for the Chores screen. '' for daily (and when none).
+// Friendly label for the Chores screen. '' for every-day chores (and when none).
 export function nextDueLabel(chore, todayStr = today()) {
-  if (chore.frequency === 'daily') return '';
+  if (chore.frequency === 'daily' && weekdaysDue(chore).length === 0) return '';
   const d = nextDueDate(chore, todayStr);
   if (!d) return '';
   const dStr = formatDate(d);
   if (dStr === todayStr) return 'Today';
   const diff = diffDays(d, parseLocalDate(todayStr));
   if (diff === 1) return 'Tomorrow';
-  if (chore.frequency === 'weekly' || chore.frequency === 'custom') return WEEKDAY_FULL[d.getDay()];
+  if (chore.frequency === 'weekly') return WEEKDAY_FULL[d.getDay()];
   if (diff > 1 && diff <= 6) return WEEKDAY_FULL[d.getDay()];
   return shortDate(d);
+}
+
+// The local calendar date a stored timestamp falls on. Mirrors localDateOf() in
+// DateUtils.gs: parse the instant and reformat, rather than slicing the raw
+// string, so legacy UTC values resolve to the right local day (#46).
+export function localDateOf(timestamp) {
+  if (!timestamp) return '';
+  const d = new Date(timestamp);
+  return Number.isNaN(d.getTime()) ? '' : formatDate(d);
 }
 
 // The date an assignment first appears on Today: due_date minus the lead window
@@ -127,6 +146,13 @@ export function appearDate(dueStr, leadDays) {
   const lead = parseInt(leadDays, 10);
   const offset = lead && lead > 1 ? lead - 1 : 0;
   return formatDate(addDays(parseLocalDate(dueStr), -offset));
+}
+
+// Shift a yyyy-MM-dd string by whole days, staying on the local calendar.
+// Backs Push (#50), which moves one occurrence's due date and nothing else.
+export function shiftDate(dueStr, days) {
+  if (!dueStr) return dueStr;
+  return formatDate(addDays(parseLocalDate(String(dueStr).slice(0, 10)), days));
 }
 
 // Friendly label for a specific assignment's due date, shown on every Today
@@ -159,7 +185,7 @@ export function shortDateStr(str) {
 
 // Number of days until next due — for the "countdown" sort. Infinity = none.
 export function daysUntilDue(chore, todayStr = today()) {
-  if (chore.frequency === 'daily') return 0;
+  if (chore.frequency === 'daily' && weekdaysDue(chore).length === 0) return 0;
   const d = nextDueDate(chore, todayStr);
   if (!d) return Infinity;
   return Math.max(0, diffDays(d, parseLocalDate(todayStr)));

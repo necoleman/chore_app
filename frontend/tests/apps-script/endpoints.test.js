@@ -333,15 +333,15 @@ describe('add/update chore start_date', () => {
 
   it('actionAddChore persists monthly nth-weekday fields (#16)', () => {
     const { ctx, read } = loadBackend();
-    ctx.actionAddChore({ name: 'Mop', frequency: 'monthly', monthly_week: 2, monthly_weekday: 5 });
+    ctx.actionAddChore({ name: 'Mop', frequency: 'monthly', monthly_week: 2, weekday_due: '5' });
     const row = read('Chores')[0];
     expect(row.monthly_week).toBe(2);
-    expect(row.monthly_weekday).toBe(5);
+    expect(row.weekday_due).toBe('5');
   });
 
   it('lead_days round-trips through add and update (#23 groundwork)', () => {
     const { ctx, read } = loadBackend();
-    ctx.actionAddChore({ name: 'Sweep', frequency: 'weekly', custom_days: '0', lead_days: 4 });
+    ctx.actionAddChore({ name: 'Sweep', frequency: 'weekly', weekday_due: '0', lead_days: 4 });
     expect(read('Chores')[0].lead_days).toBe(4);
     const choreId = read('Chores')[0].chore_id;
     ctx.actionUpdateChore({ chore_id: choreId, lead_days: 2 });
@@ -366,7 +366,7 @@ describe('generate-on-create (#17)', () => {
     const { ctx, read } = loadBackend();
     // Weekly Wednesday (3), lead_days 1 (no early window); 2026-06-28 is Sunday,
     // next Wednesday is 2026-07-01 → appears only on its due date → not yet.
-    ctx.actionAddChore({ name: 'Laundry', frequency: 'weekly', custom_days: '3', lead_days: 1 });
+    ctx.actionAddChore({ name: 'Laundry', frequency: 'weekly', weekday_due: '3', lead_days: 1 });
     expect(read('Assignments').length).toBe(0);
   });
 
@@ -375,7 +375,7 @@ describe('generate-on-create (#17)', () => {
     // Weekly Wednesday (3) with lead_days 4 → appears 3 days early. From Sunday
     // 2026-06-28, next Wednesday 2026-07-01 is within the window → created now,
     // but with the real (future) due date.
-    ctx.actionAddChore({ name: 'Laundry', frequency: 'weekly', custom_days: '3', lead_days: 4 });
+    ctx.actionAddChore({ name: 'Laundry', frequency: 'weekly', weekday_due: '3', lead_days: 4 });
     const rows = read('Assignments');
     expect(rows.length).toBe(1);
     expect(rows[0].due_date).toBe('2026-07-01');
@@ -607,7 +607,7 @@ describe('rejecting a chore while its owner is away', () => {
       { person_id: 'kid', name: 'Kid', on_vacation: onVacation },
       { person_id: 'admin', name: 'Admin', is_admin: 'TRUE' },
     ],
-    Chores: [{ chore_id: 'c1', frequency: 'weekly', custom_days: '0' }],
+    Chores: [{ chore_id: 'c1', frequency: 'weekly', weekday_due: '0' }],
     Assignments: [{ assignment_id: 'a1', chore_id: 'c1', person_id: 'kid', due_date: '2026-08-09',
                     status: 'pending_review', completed_at: '2026-08-09T10:00:00-05:00' }],
   });
@@ -654,7 +654,7 @@ describe('actionAssign creates a one-off outside the recurrence (#39)', () => {
   it('creates an assignment due today marked manual, without touching the schedule', () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 5, 28, 12, 0, 0));
     const { ctx, read } = loadBackend({
-      Chores: [{ chore_id: 'c1', frequency: 'weekly', custom_days: '0', active: 'TRUE',
+      Chores: [{ chore_id: 'c1', frequency: 'weekly', weekday_due: '0', active: 'TRUE',
                  last_generated_date: '2026-06-21' }],
     });
     ctx.actionAssign({ chore_id: 'c1', person_id: 'kid' });
@@ -885,5 +885,192 @@ describe('Add: one-off vs assign-early (#43)', () => {
     const card = ctx.actionToday({}).assignments[0];
     expect(card.due_date).toBe('2026-08-25');
     expect(card.lead_days).toBe(23);   // Aug 3 .. Aug 25 inclusive
+  });
+});
+
+describe('migrateWeekdayDue (#45)', () => {
+  it('converts custom to daily, moves weekly and monthly weekdays across', () => {
+    const { ctx, read } = loadBackend({
+      Chores: [
+        { chore_id: 'cust', frequency: 'custom', custom_days: 'monday,thursday', lead_days: 4 },
+        { chore_id: 'wk', frequency: 'weekly', custom_days: '0' },
+        { chore_id: 'mo', frequency: 'monthly', monthly_week: 2, monthly_weekday: 5 },
+        { chore_id: 'day', frequency: 'daily' },
+      ],
+    });
+    const res = ctx.migrateWeekdayDue();
+    const rows = read('Chores');
+    const by = (id) => rows.find((c) => c.chore_id === id);
+
+    // custom becomes DAILY — "Mon and Thu" is a discipline, so it takes daily's
+    // tight lead rather than weekly's window.
+    expect(by('cust').frequency).toBe('daily');
+    expect(by('cust').weekday_due).toBe('1,4');
+    expect(by('cust').lead_days).toBe(''); // was set against weekly's 4-day window
+
+    expect(by('wk').weekday_due).toBe('0');
+    expect(by('wk').frequency).toBe('weekly');
+    expect(by('mo').weekday_due).toBe('5');
+    expect(by('day').weekday_due).toBe(''); // nothing to convert
+    expect(res.migrated).toBe(3);
+  });
+
+  it('is a no-op on a second run', () => {
+    const { ctx, read } = loadBackend({
+      Chores: [{ chore_id: 'cust', frequency: 'custom', custom_days: 'monday' }],
+    });
+    ctx.migrateWeekdayDue();
+    expect(ctx.migrateWeekdayDue().migrated).toBe(0);
+    expect(read('Chores')[0].weekday_due).toBe('1');
+  });
+
+  it('skips unreadable rows rather than guessing', () => {
+    const { ctx, read } = loadBackend({
+      Chores: [
+        { chore_id: 'bad', frequency: 'custom', custom_days: 'someday' },
+        { chore_id: 'ok', frequency: 'weekly', custom_days: '3' },
+      ],
+    });
+    expect(ctx.migrateWeekdayDue().migrated).toBe(1);
+    expect(read('Chores').find((c) => c.chore_id === 'bad').frequency).toBe('custom');
+  });
+});
+
+describe('re-anchoring an interval chore honours weekday_due (#45)', () => {
+  it('snaps the new start_date instead of writing it raw', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 7, 10, 12, 0, 0));
+    const { ctx, read } = loadBackend({
+      Chores: [{ chore_id: 'c1', frequency: 'interval', interval_days: '90', weekday_due: '0',
+                 start_date: '2026-08-10', last_generated_date: '2026-08-10', active: true }],
+      Assignments: [{ assignment_id: 'a1', chore_id: 'c1', person_id: 'me',
+                      due_date: '2026-08-10', status: 'open', assigned_by: 'auto' }],
+    });
+    // Sept 15 2026 is a Tuesday; the chore is Sundays-only, so it must land on
+    // Sept 20 rather than the date typed in.
+    ctx.actionUpdateChore({ chore_id: 'c1', frequency: 'interval', start_date: '2026-09-15' });
+    expect(read('Assignments')[0].due_date).toBe('2026-09-20');
+    expect(read('Chores')[0].last_generated_date).toBe('2026-09-20');
+    vi.useRealTimers();
+  });
+
+  it('leaves the date alone when no weekday is set', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 7, 10, 12, 0, 0));
+    const { ctx, read } = loadBackend({
+      Chores: [{ chore_id: 'c1', frequency: 'interval', interval_days: '90',
+                 start_date: '2026-08-10', last_generated_date: '2026-08-10', active: true }],
+      Assignments: [{ assignment_id: 'a1', chore_id: 'c1', person_id: 'me',
+                      due_date: '2026-08-10', status: 'open', assigned_by: 'auto' }],
+    });
+    ctx.actionUpdateChore({ chore_id: 'c1', frequency: 'interval', start_date: '2026-09-15' });
+    expect(read('Assignments')[0].due_date).toBe('2026-09-15');
+    vi.useRealTimers();
+  });
+});
+
+describe('leaderboard buckets by the LOCAL completion day (#46)', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('does not put a legacy UTC evening completion in the next day', () => {
+    // Pre-v1.8 rows stored completed_at in UTC. 8pm Central on Aug 14 is
+    // 01:00Z on Aug 15, so a raw string slice counted it as Aug 15 — which is
+    // how yesterday's points turned up under Today.
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 7, 15, 12, 0, 0)); // Aug 15
+    const { ctx } = loadBackend({
+      People: [{ person_id: 'kid', name: 'Kid', points_total: 0 }],
+      Chores: [{ chore_id: 'c1' }],
+      Assignments: [
+        { assignment_id: 'a1', chore_id: 'c1', person_id: 'kid', due_date: '2026-08-14',
+          status: 'done', completed_at: '2026-08-15T01:00:00Z', points_awarded: 5 },
+      ],
+    });
+    const row = ctx.actionLeaderboard({}).leaderboard[0];
+    expect(row.points_today).toBe(0);   // it was yesterday evening, locally
+    expect(row.points_week).toBe(5);    // still inside the week
+    vi.useRealTimers();
+  });
+
+  it('counts a completion made today', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 7, 15, 12, 0, 0));
+    const { ctx } = loadBackend({
+      People: [{ person_id: 'kid', name: 'Kid', points_total: 0 }],
+      Chores: [{ chore_id: 'c1' }],
+      Assignments: [
+        { assignment_id: 'a1', chore_id: 'c1', person_id: 'kid', due_date: '2026-08-15',
+          status: 'done', completed_at: '2026-08-15T09:00:00-05:00', points_awarded: 4 },
+      ],
+    });
+    expect(ctx.actionLeaderboard({}).leaderboard[0].points_today).toBe(4);
+    vi.useRealTimers();
+  });
+
+  it('falls back to due_date for rows with no completion time', () => {
+    // A missed occurrence records its penalty but never a completed_at.
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 7, 15, 12, 0, 0));
+    const { ctx } = loadBackend({
+      People: [{ person_id: 'kid', name: 'Kid', points_total: 0 }],
+      Chores: [{ chore_id: 'c1' }],
+      Assignments: [
+        { assignment_id: 'a1', chore_id: 'c1', person_id: 'kid', due_date: '2026-08-15',
+          status: 'skipped', points_awarded: -2 },
+      ],
+    });
+    expect(ctx.actionLeaderboard({}).leaderboard[0].points_today).toBe(-2);
+    vi.useRealTimers();
+  });
+});
+
+describe('last_done and History compare instants, not strings (#46)', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('last_done reports the local date, not the raw UTC one', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 7, 15, 12, 0, 0));
+    const { ctx } = loadBackend({
+      People: [{ person_id: 'kid' }],
+      Chores: [{ chore_id: 'c1', name: 'Dishes' }],
+      Assignments: [
+        // 01:00Z on Aug 15 is 8pm Central on Aug 14.
+        { assignment_id: 'a1', chore_id: 'c1', person_id: 'kid', due_date: '2026-08-14',
+          status: 'done', completed_at: '2026-08-15T01:00:00Z' },
+      ],
+    });
+    expect(ctx.actionChores({}).chores[0].last_done).toBe('2026-08-14');
+    vi.useRealTimers();
+  });
+
+  it('picks the genuinely latest completion across mixed timestamp formats', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 7, 15, 12, 0, 0));
+    const { ctx } = loadBackend({
+      People: [{ person_id: 'kid' }],
+      Chores: [{ chore_id: 'c1', name: 'Dishes' }],
+      Assignments: [
+        // Aug 14, 11pm Central — legacy UTC, so stored as "T04:00:00Z".
+        { assignment_id: 'old', chore_id: 'c1', person_id: 'kid', due_date: '2026-08-14',
+          status: 'done', completed_at: '2026-08-15T04:00:00Z' },
+        // Aug 15, 2am Central — genuinely LATER, but "T02…" sorts BELOW "T04…",
+        // so a string comparison picks the older row.
+        { assignment_id: 'new', chore_id: 'c1', person_id: 'kid', due_date: '2026-08-15',
+          status: 'done', completed_at: '2026-08-15T02:00:00-05:00' },
+      ],
+    });
+    expect(ctx.actionChores({}).chores[0].last_done).toBe('2026-08-15');
+    vi.useRealTimers();
+  });
+
+  it('History orders by instant, so a legacy row does not jump the queue', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 7, 15, 12, 0, 0));
+    const { ctx } = loadBackend({
+      People: [{ person_id: 'kid', name: 'Kid' }],
+      Chores: [{ chore_id: 'c1', name: 'Dishes' }],
+      Assignments: [
+        // Same pair as above: the legacy row is EARLIER in fact but sorts later
+        // as a string, so this fails on the old comparison.
+        { assignment_id: 'older', chore_id: 'c1', person_id: 'kid', due_date: '2026-08-14',
+          status: 'done', completed_at: '2026-08-15T04:00:00Z' },
+        { assignment_id: 'newer', chore_id: 'c1', person_id: 'kid', due_date: '2026-08-15',
+          status: 'done', completed_at: '2026-08-15T02:00:00-05:00' },
+      ],
+    });
+    expect(ctx.actionHistory({}).history.map((h) => h.assignment_id)).toEqual(['newer', 'older']);
+    vi.useRealTimers();
   });
 });

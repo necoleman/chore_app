@@ -17,9 +17,14 @@ const APPS_DIR = path.resolve(__dirname, '../../../apps-script');
 const FILES = ['SheetUtils.gs', 'DateUtils.gs', 'Streaks.gs', 'Endpoints.gs', 'Generator.gs'];
 
 // Canonical column order per sheet (matches the README schema).
+//
+// `custom_days` and `monthly_weekday` are the pre-v1.10 columns. Nothing reads
+// them anymore, but they stay here — and in the live sheet — so migrateWeekdayDue
+// has something to convert and so a rollback loses nothing. Delete them from
+// both once the migration has bedded in.
 export const HEADERS = {
   People: ['person_id', 'name', 'color', 'fcm_token', 'points_total', 'streak_current', 'streak_best', 'is_admin', 'on_vacation'],
-  Chores: ['chore_id', 'name', 'location', 'description', 'points', 'frequency', 'custom_days', 'monthly_day', 'monthly_week', 'monthly_weekday', 'interval_days', 'once_date', 'start_date', 'lead_days', 'sort_last', 'last_generated_date', 'default_assignee', 'rotation_last', 'requires_approval', 'active'],
+  Chores: ['chore_id', 'name', 'location', 'description', 'points', 'frequency', 'weekday_due', 'monthly_day', 'monthly_week', 'interval_days', 'custom_days', 'monthly_weekday', 'once_date', 'start_date', 'lead_days', 'sort_last', 'last_generated_date', 'default_assignee', 'rotation_last', 'requires_approval', 'active'],
   Assignments: ['assignment_id', 'chore_id', 'person_id', 'due_date', 'status', 'completed_at', 'assigned_by', 'points_awarded', 'missed_count', 'reviewed_by', 'reviewed_at', 'review_note', 'last_modified_by', 'last_modified_at'],
   Locations: ['location'],
 };

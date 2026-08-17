@@ -66,7 +66,7 @@
     groupKey === 'oneoff'
       ? 'one-off'
       : assignment.frequency === 'interval'
-        ? `x${assignment.period_days} days`
+        ? `x${assignment.interval_days} days`
         : assignment.frequency;
 </script>
 
@@ -205,8 +205,8 @@
   }
 
   .card--oneoff { box-shadow: inset 3px 0 0 #7f77dd; }
-  .card--daily { box-shadow: inset 3px 0 0 #d85a30; }
-  .card--weekly { box-shadow: inset 3px 0 0 #1d9e75; }
+  .card--daily { box-shadow: inset 3px 0 0 #1d9e75; }
+  .card--weekly { box-shadow: inset 3px 0 0 #d85a30; }
   .card--monthly { box-shadow: inset 3px 0 0 #888780; }
 
   /* Only the circle is the action target (tap-to-complete/claim). Padded to a
@@ -270,8 +270,8 @@
   }
 
   .card--oneoff .chip--freq { background: #eeedfe; color: #3c3489; }
-  .card--daily .chip--freq { background: #faece7; color: #993c1d; }
-  .card--weekly .chip--freq { background: #e1f5ee; color: #0f6e56; }
+  .card--daily .chip--freq { background: #e1f5ee; color: #0f6e56; }
+  .card--weekly .chip--freq { background: #faece7; color: #993c1d; }
   .card--monthly .chip--freq { background: #f1efe8; color: #444441; }
 
   .chip--overdue { background: #fcebeb; color: #a32d2d; }

@@ -10,7 +10,6 @@
   export let onSave;
   export let onClose;
 
-  const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
   let form = chore
     ? { ...chore }
@@ -20,10 +19,9 @@
         description: '',
         points: 1,
         frequency: 'daily',
-        custom_days: '',
+        weekday_due: '',
         monthly_day: '',
         monthly_week: '',
-        monthly_weekday: '',
         interval_days: '',
         once_date: '',
         start_date: '',
@@ -34,8 +32,10 @@
         active: true,
       };
 
-  // Sheets stores blanks as '' — normalise to a real boolean so the checkbox
-  // binds correctly on legacy rows that predate the column.
+  // `sort_last` is set in the spreadsheet, not here — there's no control for it
+  // in the editor. Normalised and carried on `form` regardless so that saving a
+  // chore round-trips the value instead of silently clearing a flag someone set
+  // in the sheet.
   form.sort_last = form.sort_last === true || form.sort_last === 'TRUE';
 
   // A rotation is a comma-delimited list of person_ids (#24). It can't be
@@ -61,28 +61,51 @@
 
   let saving = false;
 
-  // For custom days — track as checkboxes. NOTE: `custom_days` is synced
-  // imperatively in toggleDay (NOT via a reactive `$:`). A reactive sync reads
-  // and writes `form`, so it re-fires on any form change — including typing in
-  // the weekly weekday field (which also binds custom_days), wiping it (#8).
-  let selectedDays = (form.custom_days || '').split(',').map((d) => d.trim()).filter(Boolean);
+  // Daily's pinned weekdays, read out of `weekday_due` (#45).
+  let selectedDays = String(form.weekday_due ?? '')
+    .split(',')
+    .map((d) => parseInt(String(d).trim(), 10))
+    .filter((n) => !Number.isNaN(n));
 
   // Ensure a weekly chore always has a valid 0–6 weekday so the <select> and the
   // stored value agree (a blank/leftover value would show Sunday but save empty).
   // Guarded so it only fills a missing value — never overwrites a real choice.
-  $: if (form.frequency === 'weekly' && !/^[0-6]$/.test(String(form.custom_days))) {
-    form.custom_days = '0';
+  // Only daily can hold MULTIPLE weekdays. Switching a pinned daily ("1,4") to
+  // any other frequency would otherwise leave a list behind: the single-choice
+  // select matches nothing and renders blank, while the stored value still says
+  // Monday — so an interval chore would silently snap to Mondays despite the
+  // field reading "Any day". Trim to the first entry.
+  $: if (form.frequency !== 'daily' && String(form.weekday_due ?? '').includes(',')) {
+    form.weekday_due = String(form.weekday_due).split(',')[0].trim();
+  }
+
+  // Weekly additionally needs exactly one weekday — blank would save a chore
+  // that never generates.
+  $: if (form.frequency === 'weekly' && !/^[0-6]$/.test(String(form.weekday_due))) {
+    form.weekday_due = '0';
   }
 
   // Lead window (#23) applies to non-daily / non-once cadences. It defaults to 1
   // (appears on the due date) and must be ≥1 and < the recurrence interval.
-  const LEAD_FREQS = ['weekly', 'custom', 'monthly', 'interval'];
+  const LEAD_FREQS = ['weekly', 'monthly', 'interval'];
+  $: intervalDaysSet = /^\d+$/.test(String(form.interval_days ?? '').trim());
+
   $: leadMax =
     form.frequency === 'monthly'
       ? 27
       : form.frequency === 'interval'
         ? Math.max(1, (parseInt(form.interval_days, 10) || 2) - 1)
-        : 6; // weekly / custom (7-day cycle)
+        : 6; // weekly (7-day cycle)
+
+  // The default the backend will apply if this is left blank — mirrors
+  // defaultLeadDays() in DateUtils.gs. Shown so the placeholder and the hint
+  // agree with what actually happens.
+  $: defaultLeadHint =
+    form.frequency === 'monthly'
+      ? 7
+      : form.frequency === 'interval'
+        ? Math.min(parseInt(form.interval_days, 10) || 7, 7)
+        : 4; // weekly
 
   const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const WEEK_ORDINALS = [
@@ -92,15 +115,15 @@
     { value: 4, label: 'Fourth' },
   ];
 
-  // Sheet values arrive as strings; coerce the nth-weekday fields to numbers so
-  // they match the numeric <option> values (Svelte binds with ===).
+  // `monthly_week` is the discriminator for nth-weekday mode; the weekday itself
+  // now lives in the shared `weekday_due` (#45). Coerce the ordinal to a number
+  // so it matches the numeric <option> values (Svelte binds with ===), and keep
+  // weekday_due a STRING everywhere so it round-trips consistently.
   const hasNth =
     form.monthly_week !== '' && form.monthly_week != null &&
-    form.monthly_weekday !== '' && form.monthly_weekday != null;
-  if (hasNth) {
-    form.monthly_week = parseInt(form.monthly_week, 10);
-    form.monthly_weekday = parseInt(form.monthly_weekday, 10);
-  }
+    String(form.weekday_due ?? '') !== '';
+  if (hasNth) form.monthly_week = parseInt(form.monthly_week, 10);
+  if (form.weekday_due != null) form.weekday_due = String(form.weekday_due);
 
   // Monthly sub-mode (#16): 'day' = day-of-month, 'weekday' = nth weekday.
   let monthlyMode = hasNth ? 'weekday' : 'day';
@@ -111,21 +134,34 @@
     monthlyMode = mode;
     if (mode === 'day') {
       form.monthly_week = '';
-      form.monthly_weekday = '';
+      form.weekday_due = '';
     } else {
       form.monthly_day = '';
       if (form.monthly_week === '' || form.monthly_week == null) form.monthly_week = 1;
-      if (form.monthly_weekday === '' || form.monthly_weekday == null) form.monthly_weekday = 5; // Friday
+      if (!/^[0-6]$/.test(String(form.weekday_due))) form.weekday_due = '5'; // Friday
     }
   }
 
-  function toggleDay(day) {
-    if (selectedDays.includes(day)) {
-      selectedDays = selectedDays.filter((d) => d !== day);
-    } else {
-      selectedDays = [...selectedDays, day];
+  // Daily's weekday pins (#45). Blank weekday_due means every day; a list pins
+  // it to those days, which is what the old `custom` frequency did — but as
+  // DAILY, so it keeps daily's tight lead and its Every-day grouping.
+  let dailyMode = selectedDays.length > 0 ? 'set' : 'every';
+
+  function setDailyMode(mode) {
+    dailyMode = mode;
+    if (mode === 'every') {
+      selectedDays = [];
+      form.weekday_due = '';
     }
-    form.custom_days = selectedDays.join(','); // sync only for the custom path
+  }
+
+  // Synced imperatively, NOT via a reactive `$:` — a reactive sync reads and
+  // writes `form`, so it re-fires on any form change and wipes the value (#8).
+  function toggleDay(day) {
+    selectedDays = selectedDays.includes(day)
+      ? selectedDays.filter((d) => d !== day)
+      : [...selectedDays, day].sort((a, b) => a - b);
+    form.weekday_due = selectedDays.join(',');
   }
 
   async function handleSubmit() {
@@ -191,41 +227,62 @@
       <label class="field">
         <span class="label">Frequency</span>
         <select bind:value={form.frequency} class="input">
-          <option value="daily">Daily</option>
+          <option value="daily">Daily (every day, or set days)</option>
           <option value="weekly">Weekly (set day below)</option>
-          <option value="custom">Custom days</option>
           <option value="monthly">Monthly</option>
           <option value="interval">Every N days</option>
           <option value="once">One-time</option>
         </select>
       </label>
 
-      {#if form.frequency === 'custom'}
+      {#if form.frequency === 'daily'}
         <div class="field">
-          <span class="label">Days of week</span>
+          <span class="label">Which days</span>
           <div class="day-grid">
-            {#each DAYS as day}
-              <button
-                type="button"
-                class="day-btn"
-                class:active={selectedDays.includes(day)}
-                on:click={() => toggleDay(day)}
-              >
-                {day.slice(0, 3)}
-              </button>
-            {/each}
+            <button
+              type="button"
+              class="day-btn"
+              class:active={dailyMode === 'every'}
+              on:click={() => setDailyMode('every')}
+            >
+              Every day
+            </button>
+            <button
+              type="button"
+              class="day-btn"
+              class:active={dailyMode === 'set'}
+              on:click={() => setDailyMode('set')}
+            >
+              Specific days
+            </button>
           </div>
+          {#if dailyMode === 'set'}
+            <div class="day-grid">
+              {#each WEEKDAYS as name, i}
+                <button
+                  type="button"
+                  class="day-btn"
+                  class:active={selectedDays.includes(i)}
+                  on:click={() => toggleDay(i)}
+                >
+                  {name.slice(0, 3)}
+                </button>
+              {/each}
+            </div>
+          {/if}
+          <span class="hint">Due on these days and expected that day — no early window.</span>
         </div>
       {/if}
 
       {#if form.frequency === 'weekly'}
         <label class="field">
           <span class="label">Weekday</span>
-          <select bind:value={form.custom_days} class="input">
+          <select bind:value={form.weekday_due} class="input">
             {#each WEEKDAYS as name, i}
               <option value={String(i)}>{name}</option>
             {/each}
           </select>
+          <span class="hint">Due once a week — appears several days early.</span>
         </label>
       {/if}
 
@@ -266,9 +323,9 @@
                   <option value={w.value}>{w.label}</option>
                 {/each}
               </select>
-              <select bind:value={form.monthly_weekday} class="input">
+              <select bind:value={form.weekday_due} class="input">
                 {#each WEEKDAYS as name, i}
-                  <option value={i}>{name}</option>
+                  <option value={String(i)}>{name}</option>
                 {/each}
               </select>
             </div>
@@ -277,6 +334,17 @@
       {/if}
 
       {#if form.frequency === 'interval'}
+        <label class="field">
+          <span class="label">Due on (optional)</span>
+          <select bind:value={form.weekday_due} class="input">
+            <option value="">Any day — exactly N days later</option>
+            {#each WEEKDAYS as name, i}
+              <option value={String(i)}>{name}</option>
+            {/each}
+          </select>
+          <span class="hint">Lands on the first such day after the interval. The next interval counts from there, so the schedule drifts slightly later each time.</span>
+        </label>
+
         <label class="field">
           <span class="label">Every how many days?</span>
           <input type="number" min="1" bind:value={form.interval_days} class="input input--sm" placeholder="e.g. 90" />
@@ -297,17 +365,26 @@
         </label>
       {/if}
 
-      {#if LEAD_FREQS.includes(form.frequency)}
+      <!-- Hidden until an interval chore has its interval: both the range and the
+           default are derived from it, so with it blank the field read
+           "(1–1) … every-N-days 1" — nonsense at exactly the moment you're
+           reading it. -->
+      {#if LEAD_FREQS.includes(form.frequency) && (form.frequency !== 'interval' || intervalDaysSet)}
         <label class="field">
-          <span class="label">Days visible before overdue (1–{leadMax})</span>
-          <span class="hint">Leave blank for the default: weekly 4, monthly 7, every-N-days {Math.min(parseInt(form.interval_days, 10) || 1, 7)}.</span>
+          <span class="label">Days visible before overdue</span>
+          <!-- The every-N-days default depends on the interval, so only show a
+               concrete number when we're actually on an interval chore. -->
+          <span class="hint">
+            Leave blank for default: weekly 4, monthly 7, every-N-days
+            {form.frequency === 'interval' ? defaultLeadHint : 'up to 7'}.
+          </span>
           <input
             type="number"
             min="1"
             max={leadMax}
             bind:value={form.lead_days}
             class="input input--sm"
-            placeholder="default 1"
+            placeholder="default {defaultLeadHint}"
           />
         </label>
       {/if}
@@ -332,11 +409,6 @@
           </select>
         </label>
       {/if}
-
-      <label class="field field--row">
-        <input type="checkbox" bind:checked={form.sort_last} />
-        <span class="label">Show at the end of its group</span>
-      </label>
 
       <label class="field field--row">
         <input type="checkbox" bind:checked={form.requires_approval} />

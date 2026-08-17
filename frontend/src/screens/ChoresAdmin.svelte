@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { get as apiGet, post } from '../api/client.js';
   import { showToast } from '../stores/ui.js';
+  import { currentUser } from '../stores/user.js';
   import ChoreForm from '../components/ChoreForm.svelte';
   import PersonPicker from '../components/PersonPicker.svelte';
   import { assignChoreToday } from '../stores/data.js';
@@ -17,6 +18,17 @@
   let editingChore = null;   // null = not editing, object = edit existing
   let assigningChore = null; // chore awaiting an assignee for a one-off today
   let assignMode = 'oneoff'; // 'oneoff' | 'early' — see ADD_MODES below
+
+  // The screen is open to everyone, but only admins get the chore-authoring
+  // controls: creating (+ Add), Edit, and Reset rotation. Non-admins keep the
+  // per-row Add button, so they can pull a chore onto Today without being able
+  // to define one or change what an existing one is worth.
+  //
+  // This is presentation only — see actionAddChore/actionUpdateChore, which
+  // don't check who is calling. It stops a kid using the app, not a kid using
+  // the network tab.
+  $: isAdmin = $currentUser?.is_admin;
+  $: selfId = $currentUser?.person_id;
 
   // Two intents behind the Add button (#43):
   //   one-off — an extra due today, leaving the chore's schedule untouched
@@ -45,9 +57,8 @@
   let showAddForm = false;
   let addInitialName = '';    // prefill the new-chore form (from search)
   let searchTerm = '';
-  let sortMode = 'default';   // default | location | assignee | periodicity | countdown
-
-  const FREQ_ORDER = { daily: 0, weekly: 1, custom: 2, monthly: 3, interval: 4, once: 5 };
+  let sortMode = 'default';   // default (spreadsheet row order) | countdown (next due)
+  let filterKey = '';         // '' = all; else "loc:Kitchen" | "person:p_x" | "freq:daily"
 
   async function load() {
     loading = true;
@@ -69,12 +80,10 @@
 
   onMount(load);
 
-  // Pass `q` in explicitly so it appears in the reactive statements below —
-  // Svelte only tracks dependencies referenced directly in a `$:` line, not
-  // ones read inside a called function's body.
-  // Pass `q` and `peopleById` in explicitly so they appear in the reactive
-  // statements below — Svelte only tracks dependencies referenced directly in a
-  // `$:` line, not ones read inside a called function's body.
+  // Arguments like `q` and `peopleById` are passed in explicitly so they appear
+  // in the reactive statements below — Svelte only tracks dependencies referenced
+  // directly in a `$:` line, not ones read inside a called function's body.
+
   // Map a default_assignee value — a single person_id or a comma-delimited
   // rotation list (#24) — to a display string of names joined with " → ".
   // Returns '' for empty/unclaimed. Unknown ids fall back to the raw id.
@@ -87,57 +96,120 @@
       .join(' → ');
   }
 
-  function matchesSearch(c, q, peopleById) {
+  // Name only. Location, assignee and frequency used to be searched too, but the
+  // Filter dropdown now covers all three by listing the real values — and doing
+  // it there rather than here means you never have to remember what a room is
+  // called before you can narrow to it.
+  function matchesSearch(c, q) {
     if (!q) return true;
-    const assignee = c.default_assignee
-      ? assigneeLabel(c.default_assignee, peopleById)
-      : 'Unclaimed';
-    return (
-      (c.name || '').toLowerCase().includes(q) ||
-      (c.location || '').toLowerCase().includes(q) ||
-      (c.description || '').toLowerCase().includes(q) ||
-      assignee.toLowerCase().includes(q)
-    );
+    return (c.name || '').toLowerCase().includes(q);
+  }
+
+  // ─── Filter (#51) ───────────────────────────────────────────────────────────
+  //
+  // One flat list of real values — every room, person and cadence in use, each
+  // with a count — instead of a filter *type* that then needs a second choice.
+  // Collapsing those two steps into one line is the whole point: picking "Kitchen"
+  // is one tap, not "Location" and then "Kitchen".
+  //
+  // Options are derived from the chores actually loaded, so a new room or person
+  // appears by itself and nothing ever lists a value with zero matches.
+  const FREQ_LABELS = {
+    daily: 'Daily',
+    weekly: 'Weekly',
+    monthly: 'Monthly',
+    interval: 'Every N days',
+    once: 'One-time',
+  };
+
+  const assigneeIds = (c) =>
+    String(c.default_assignee || '').split(',').map((s) => s.trim()).filter(Boolean);
+
+  // Encoded as "type:value" so the whole thing binds to one string. Split on the
+  // FIRST colon only — a person_id could contain one.
+  function matchesFilter(c, key) {
+    if (!key) return true;
+    const i = key.indexOf(':');
+    const type = key.slice(0, i);
+    const val = key.slice(i + 1);
+    if (type === 'loc') return (c.location || '') === val;
+    if (type === 'freq') return c.frequency === val;
+    if (type === 'person') {
+      const ids = assigneeIds(c);
+      // '' means unclaimed. A rotation matches every member, so filtering to
+      // Claire finds the chores she shares as well as the ones that are hers.
+      return val === '' ? ids.length === 0 : ids.includes(val);
+    }
+    return true;
+  }
+
+  // Counts are taken after the search is applied, so they always describe what
+  // picking that option would actually show you.
+  function buildFilterGroups(list, people) {
+    const n = (fn) => list.filter(fn).length;
+
+    const rooms = [...new Set(list.map((c) => c.location).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b))
+      .map((loc) => ({ key: `loc:${loc}`, label: loc, count: n((c) => c.location === loc) }));
+
+    const persons = people
+      .map((p) => ({
+        key: `person:${p.person_id}`,
+        label: p.name,
+        count: n((c) => assigneeIds(c).includes(p.person_id)),
+      }))
+      .filter((o) => o.count > 0);
+    const unclaimed = n((c) => assigneeIds(c).length === 0);
+    if (unclaimed > 0) persons.push({ key: 'person:', label: 'Unclaimed', count: unclaimed });
+
+    const freqs = Object.keys(FREQ_LABELS)
+      .map((f) => ({ key: `freq:${f}`, label: FREQ_LABELS[f], count: n((c) => c.frequency === f) }))
+      .filter((o) => o.count > 0);
+
+    return [
+      { label: 'Rooms', options: rooms },
+      { label: 'People', options: persons },
+      { label: 'How often', options: freqs },
+    ].filter((g) => g.options.length > 0);
   }
 
   $: peopleById = Object.fromEntries(people.map((p) => [p.person_id, p]));
   $: assigneeName = (value) => assigneeLabel(value, peopleById) || null;
   $: todayStr = today();
 
-  // Sort comparator for the active list (#15). `peopleById`/`todayStr`/`sortMode`
-  // are referenced here so Svelte re-sorts when they change.
-  function sortChores(list, mode, peopleById, todayStr) {
-    if (mode === 'default') return list;
-    const arr = [...list];
-    if (mode === 'location') {
-      arr.sort((a, b) => (a.location || '~').localeCompare(b.location || '~'));
-    } else if (mode === 'assignee') {
-      // Unclaimed (no default assignee) first, then by assignee name.
-      arr.sort((a, b) => {
-        const an = a.default_assignee ? assigneeLabel(a.default_assignee, peopleById) : '';
-        const bn = b.default_assignee ? assigneeLabel(b.default_assignee, peopleById) : '';
-        if (!an && bn) return -1;
-        if (an && !bn) return 1;
-        return an.localeCompare(bn);
-      });
-    } else if (mode === 'periodicity') {
-      arr.sort((a, b) => (FREQ_ORDER[a.frequency] ?? 9) - (FREQ_ORDER[b.frequency] ?? 9));
-    } else if (mode === 'countdown') {
-      arr.sort((a, b) => daysUntilDue(a, todayStr) - daysUntilDue(b, todayStr));
-    }
-    return arr;
+  // Location, Assignee and Periodicity sorts are gone — the Filter dropdown
+  // answers all three better, by showing only what you asked for instead of
+  // burying it in a reordered list of everything (#51).
+  //
+  // "Default" is spreadsheet row order — the list arrives that way and is left
+  // alone. Kept deliberately: it means rearranging rows in the Chores tab is how
+  // you control this order, which alphabetical would take away.
+  function sortChores(list, mode, todayStr) {
+    if (mode !== 'countdown') return list;
+    return [...list].sort((a, b) => daysUntilDue(a, todayStr) - daysUntilDue(b, todayStr));
   }
 
   $: q = searchTerm.trim().toLowerCase();
+  $: searched = chores.filter((c) => matchesSearch(c, q));
+  $: filterGroups = buildFilterGroups(searched, people);
+
+  // A filter can go stale — narrow to Kitchen, then search something with no
+  // kitchen chores and the option no longer exists. Drop it rather than showing
+  // an empty list with a filter the dropdown can't display.
+  $: if (filterKey && !filterGroups.some((g) => g.options.some((o) => o.key === filterKey))) {
+    filterKey = '';
+  }
+
+  $: visible = searched.filter((c) => matchesFilter(c, filterKey));
   $: activeChores = sortChores(
-    chores.filter((c) => (c.active === true || c.active === 'TRUE') && matchesSearch(c, q, peopleById)),
-    sortMode, peopleById, todayStr
+    visible.filter((c) => c.active === true || c.active === 'TRUE'),
+    sortMode, todayStr
   );
-  $: inactiveChores = chores.filter(
-    (c) => c.active !== true && c.active !== 'TRUE' && matchesSearch(c, q, peopleById)
-  );
+  $: inactiveChores = visible.filter((c) => c.active !== true && c.active !== 'TRUE');
   $: noResults =
-    searchTerm.trim() !== '' && activeChores.length === 0 && inactiveChores.length === 0;
+    (searchTerm.trim() !== '' || filterKey !== '') &&
+    activeChores.length === 0 &&
+    inactiveChores.length === 0;
 
   // Vacation controls moved to the Leaders tab (#38) — easier to reach, and the
   // people list already lives there.
@@ -176,8 +248,10 @@
 
 <div class="screen">
   <header class="header">
-    <h1 class="title">Manage Chores</h1>
-    <button class="add-btn" on:click={() => openAdd()}>+ Add</button>
+    <h1 class="title">{isAdmin ? 'Manage Chores' : 'Chores'}</h1>
+    {#if isAdmin}
+      <button class="add-btn" on:click={() => openAdd()}>+ Add</button>
+    {/if}
   </header>
 
   {#if loading}
@@ -189,16 +263,39 @@
       <input
         type="search"
         class="search"
-        placeholder="Search name, location, assignee…"
+        placeholder="Search chore name…"
         bind:value={searchTerm}
       />
       <select class="sort" bind:value={sortMode} aria-label="Sort chores">
         <option value="default">Sort: Default</option>
-        <option value="location">Sort: Location</option>
-        <option value="assignee">Sort: Assignee</option>
-        <option value="periodicity">Sort: Periodicity</option>
         <option value="countdown">Sort: Next due</option>
       </select>
+    </div>
+
+    <!-- Native <select> with <optgroup> rather than a custom dropdown: it gives
+         the grouped list for free and opens as the platform's own picker, which
+         on a phone is a full-height wheel rather than a cramped menu. -->
+    <div class="filter-wrap">
+      <select
+        class="filter"
+        class:filter--on={filterKey !== ''}
+        bind:value={filterKey}
+        aria-label="Filter chores"
+      >
+        <option value="">All chores ({searched.length})</option>
+        {#each filterGroups as group (group.label)}
+          <optgroup label={group.label}>
+            {#each group.options as opt (opt.key)}
+              <option value={opt.key}>{opt.label} ({opt.count})</option>
+            {/each}
+          </optgroup>
+        {/each}
+      </select>
+      {#if filterKey}
+        <button class="filter-clear" on:click={() => (filterKey = '')} aria-label="Clear filter">
+          Clear ✕
+        </button>
+      {/if}
     </div>
 
     {#if activeChores.length > 0}
@@ -232,7 +329,7 @@
               <CollapsibleDescription text={chore.description} />
             </div>
             <div class="chore-actions">
-              {#if isRotation(chore)}
+              {#if isAdmin && isRotation(chore)}
                 <button
                   class="reset-rotation-btn"
                   disabled={resetBusy === chore.chore_id}
@@ -240,7 +337,9 @@
                 >Reset rotation</button>
               {/if}
               <button class="add-today-btn" on:click={() => (assigningChore = chore)}>Add</button>
-              <button class="edit-btn" on:click={() => (editingChore = chore)}>Edit</button>
+              {#if isAdmin}
+                <button class="edit-btn" on:click={() => (editingChore = chore)}>Edit</button>
+              {/if}
             </div>
           </div>
         {/each}
@@ -260,7 +359,9 @@
                 </div>
               {/if}
             </div>
-            <button class="edit-btn" on:click={() => (editingChore = chore)}>Edit</button>
+            {#if isAdmin}
+              <button class="edit-btn" on:click={() => (editingChore = chore)}>Edit</button>
+            {/if}
           </div>
         {/each}
       </section>
@@ -268,10 +369,20 @@
 
     {#if noResults}
       <div class="no-results">
-        <p class="no-results-text">No chores match “{searchTerm}”.</p>
-        <button class="add-btn" on:click={() => openAdd(searchTerm.trim())}>
-          + Add “{searchTerm.trim()}”
-        </button>
+        <!-- Offering to create the search term only makes sense when there IS
+             one. Filtering to an empty room is a different situation: nothing
+             was typed, so there's no name to hand the new-chore form. -->
+        {#if searchTerm.trim()}
+          <p class="no-results-text">No chores match “{searchTerm.trim()}”.</p>
+          {#if isAdmin}
+            <button class="add-btn" on:click={() => openAdd(searchTerm.trim())}>
+              + Add “{searchTerm.trim()}”
+            </button>
+          {/if}
+        {:else}
+          <p class="no-results-text">Nothing matches this filter.</p>
+          <button class="add-btn" on:click={() => (filterKey = '')}>Show all chores</button>
+        {/if}
       </div>
     {/if}
   {/if}
@@ -283,9 +394,9 @@
      "this needs doing sooner than planned but I don't know who'll do it". -->
 {#if assigningChore}
   <PersonPicker
-    {people}
-    selected={defaultAssigneeFor(assigningChore)}
-    allowUnassigned={true}
+    people={isAdmin ? people : people.filter((p) => p.person_id === selfId)}
+    selected={isAdmin ? defaultAssigneeFor(assigningChore) : selfId}
+    allowUnassigned={isAdmin}
     title="Add this chore"
     modes={addModes}
     bind:selectedMode={assignMode}
@@ -365,6 +476,43 @@
     font-size: 13px;
     background: #fff;
     flex-shrink: 0;
+  }
+
+  .filter-wrap {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    padding: 0 16px 10px;
+  }
+
+  .filter {
+    flex: 1;
+    min-width: 0;
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
+    padding: 10px 8px;
+    font-size: 13px;
+    background: #fff;
+  }
+
+  /* Filled in while a filter is active, so it's obvious the list is narrowed —
+     otherwise an empty-looking tab reads as missing data. A class, not an
+     attribute selector: bind:value sets the DOM property, leaving the `value`
+     attribute absent, so [value=''] would never match. */
+  .filter--on {
+    border-color: #16a34a;
+    background: #f0fdf4;
+  }
+
+  .filter-clear {
+    flex: none;
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 13px;
+    background: #fff;
+    color: #374151;
+    cursor: pointer;
   }
 
   .section { padding: 0 16px; margin-bottom: 8px; }

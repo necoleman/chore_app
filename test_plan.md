@@ -234,9 +234,9 @@ Test environments needed:
 **Steps:** Add a chore with frequency "Weekly", set day to today's weekday number (0=Sun).
 **Expected:** Chore only generates on that weekday. Run generator on a different day and confirm no assignment is created.
 
-### CA-05 — Add a custom days chore
-**Steps:** Add a chore, frequency "Custom days", select Mon/Wed/Fri.
-**Expected:** `custom_days = monday,wednesday,friday` in sheet. Generator only creates assignments on those days.
+### CA-05 — Add a specific-days chore
+**Steps:** Add a chore, frequency **Daily**, choose **Specific days**, select Mon/Wed/Fri.
+**Expected:** `weekday_due = 1,3,5` in the sheet. The generator only creates assignments on those days, and the chore appears under **Every day** on Today (not This week) — daily with pinned weekdays keeps daily's tight lead of 1. *(Was frequency "Custom days" with `custom_days = monday,wednesday,friday` before v1.10.)*
 
 ### CA-06 — Add a monthly chore
 **Steps:** Add a chore, frequency "Monthly", day of month = today's date.
@@ -502,7 +502,7 @@ These cases verify the iOS safe-area fixes (status bar overlap and bottom-sheet 
 
 ### LY-04 — ChoreForm buttons stay pinned on a long form
 **Preconditions:** Admin, ChoreForm open.
-**Steps:** Set frequency to **Custom days** (expands the weekday grid) and fill all fields so the form is taller than the sheet. Scroll the form up and down.
+**Steps:** Set frequency to **Daily → Specific days** (expands the weekday grid) and fill all fields so the form is taller than the sheet. Scroll the form up and down.
 **Expected:** The **Cancel**/**Save** action bar stays pinned (sticky) to the bottom of the sheet and remains visible while the fields scroll behind it. Buttons never disappear below the toolbar / home indicator.
 
 ### LY-05 — ChoreForm buttons clear the home indicator (standalone)
@@ -741,7 +741,7 @@ Covers enhancements 10–15. Requires the `start_date` column on the Chores tab 
 ### ND-01 — Next-due tag on the Chores screen
 **Preconditions:** Active chores of varied frequencies.
 **Steps:** Open Manage Chores.
-**Expected:** Each non-daily chore shows a "Next: …" tag — a weekday name for weekly/custom (e.g. "Tuesday", or "Today"), a date for monthly/interval/once. Daily chores show no next-due tag. (Today screen unchanged — no next-due there.)
+**Expected:** Each non-daily chore shows a "Next: …" tag — a weekday name for weekly (e.g. "Tuesday", or "Today"), a date for monthly/interval/once. Every-day chores show no next-due tag; a daily chore pinned to specific days does show one. (Today screen unchanged — no next-due there.)
 
 ### FD-01 — First due date defers generation
 **Preconditions:** Add a chore with a future "First due date" (`start_date`).
@@ -750,7 +750,7 @@ Covers enhancements 10–15. Requires the `start_date` column on the Chores tab 
 
 ### SORT-01 — Sort the Chores screen
 **Steps:** Use the Sort dropdown: Location, Assignee, Periodicity, Next due.
-**Expected:** Location → A–Z (blank last); Assignee → unclaimed first, then by name; Periodicity → daily→weekly→custom→monthly→interval→once; Next due → soonest first. "Default" restores sheet order.
+**Expected:** Location → A–Z (blank last); Assignee → unclaimed first, then by name; Periodicity → daily→weekly→monthly→interval→once; Next due → soonest first. "Default" restores sheet order.
 
 ### DESC-COLLAPSE-01 — Collapsible description
 **Preconditions:** A chore with a long description.
@@ -766,7 +766,7 @@ Covers enhancements 10–15. Requires the `start_date` column on the Chores tab 
 
 ## 19. Last-Done, Monthly nth-Weekday, Due-Today & Frequency Colors (v1.0.0)
 
-Covers enhancements 9, 16, 17, 18. Requires the new `monthly_week` / `monthly_weekday` columns on the Chores tab and the redeployed Apps Script.
+Covers enhancements 9, 16, 17, 18. Requires the `monthly_week` / `weekday_due` columns on the Chores tab and the redeployed Apps Script. *(`monthly_weekday` was folded into `weekday_due` in v1.10.)*
 
 ### LD-01 — "Last done" tag on the Chores screen (#9)
 **Preconditions:** A chore that has at least one completed (done) assignment.
@@ -789,7 +789,7 @@ Covers enhancements 9, 16, 17, 18. Requires the new `monthly_week` / `monthly_we
 ### FREQ-COLOR-01 — Frequency color-coding on Today (#18)
 **Preconditions:** Open chores of daily, weekly, and other (monthly/interval/once) frequencies on Today.
 **Steps:** View the Today screen.
-**Expected:** Open cards are tinted — daily light blue, weekly (and custom) light green, all others light yellow. A pending-approval card still shows amber and a sent-back card still shows red (frequency tint does not override those). Done/skipped cards stay greyed out with no frequency tint.
+**Expected:** *(Rewritten for v1.9.0 — frequency tints were replaced by cadence groups.)* Each card carries a coloured **stripe** down its left edge matching its group heading: One-off purple, Every day coral, This week teal, Monthly and occasional grey. The frequency **chip** matches. The card background is left free for status, so a pending-approval card shows amber and a sent-back card shows red without fighting the stripe. Done/skipped cards grey out; the stripe remains.
 
 ---
 
@@ -828,7 +828,7 @@ Covers enhancements 20 and 22, plus the per-card "Due …" tag (display groundwo
 
 ### TSORT-01 — Sort the Today screen
 **Steps:** Use the **Sort** dropdown: Due date, then Frequency, then back to Default.
-**Expected:** Items reorder **within** the My Chores / Family / Available sections (sections are not merged). Due date → soonest/most-overdue first; Frequency → daily→weekly→custom→monthly→interval→once. Finished (done/skipped) items stay at the bottom of their section in every mode. Default restores the overdue-first ordering.
+**Expected:** Items reorder **within** the My Chores / Family / Available sections (sections are not merged). *(Rewritten for v1.9.0 — the Frequency sort was removed; cadence grouping supersedes it.)* Only **Default** and **Due date** remain. Within each cadence group: Default orders overdue first, then due today, then lead-window cards, with `sort_last` chores and then finished ones at the bottom, and equal chores ordered cheapest-first. Due date drops the cadence ordering but keeps finished last.
 
 ### DUETAG-01 — "Due …" tag on every card
 **Preconditions:** Assignments due today and at least one overdue.
@@ -877,7 +877,7 @@ Covers issue-log #8–#11. Frontend (#8, #10) + Apps Script (#9, #11); no new sh
 
 ### BUG-08 — Weekly chore weekday saves and generates
 **Steps:** Add a chore, frequency **Weekly**, pick a weekday from the dropdown (e.g. Tuesday), save.
-**Expected:** The weekday persists (it no longer resets while editing). `custom_days` holds the 0–6 value; the chore generates an assignment on/around that weekday and appears on Today (previously it saved blank and never reached Assignments). Editing an existing weekly chore preselects its current weekday.
+**Expected:** The weekday persists (it no longer resets while editing). `weekday_due` holds the 0–6 value; the chore generates an assignment on/around that weekday and appears on Today (previously it saved blank and never reached Assignments). Editing an existing weekly chore preselects its current weekday.
 
 ### BUG-09 — Future first-due chore appears in its lead window
 **Preconditions:** Create an interval/weekly/monthly chore with a **First due date** a few days out (e.g. July 5).
@@ -1015,7 +1015,7 @@ Copy the table below into a spreadsheet. Fill in **Tester**, **Date**, **Result*
 | CA-02 | Chore Admin | Non-admin cannot access Chores screen via nav | | | | |
 | CA-03 | Chore Admin | Add a daily chore | | | | |
 | CA-04 | Chore Admin | Add a weekly chore (specific day) | | | | |
-| CA-05 | Chore Admin | Add a custom days chore | | | | |
+| CA-05 | Chore Admin | Add a specific-days chore | | | | |
 | CA-06 | Chore Admin | Add a monthly chore | | | | |
 | CA-07 | Chore Admin | Add an interval chore | | | | |
 | CA-08 | Chore Admin | Edit a chore | | | | |

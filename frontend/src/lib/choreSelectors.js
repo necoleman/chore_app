@@ -4,7 +4,7 @@
 // can be unit-tested directly (the components delegate to these functions inside
 // their reactive `$:` blocks). Keep these pure — no stores, no side effects.
 
-import { appearDate } from './dueDates.js';
+import { appearDate, localDateOf } from './dueDates.js';
 
 // Assignments to show on the Today screen for a given local date string (yyyy-MM-dd):
 // finished items show when due today, plus a chore *completed* today stays on
@@ -20,7 +20,7 @@ export function filterTodayAssignments(assignments, todayStr) {
     if (!d) return false;
     if (a.status === 'done' || a.status === 'skipped') {
       if (d === todayStr) return true;
-      return a.status === 'done' && a.completed_at?.slice(0, 10) === todayStr;
+      return a.status === 'done' && localDateOf(a.completed_at) === todayStr;
     }
     return appearDate(d, a.lead_days) <= todayStr;
   });
@@ -29,29 +29,46 @@ export function filterTodayAssignments(assignments, todayStr) {
 // ─── Cadence grouping (#38) ───────────────────────────────────────────────────
 //
 // A person's list is split into four groups rather than colour-coded, because a
-// heading states the cadence in words and needs no legend. Order is fixed:
+// heading states things in words and needs no legend. Order is fixed:
 //
-//   one-off → every day → this week → monthly and occasional
+//   One-off → Daily Chores → Weekly Chores → Monthly/Longterm
 //
 // One-offs lead because nothing regenerates them. A missed daily chore returns
 // tomorrow by itself; a missed one-off just sits wherever it was filed, and it
 // exists precisely because somebody asked for it specially.
+// The labels name each group's cadence. Order still runs soonest-first, so the
+// list reads as an urgency ramp even though the words describe rhythm.
+//
+// "Daily Chores" covers daily chores pinned to specific weekdays too (#45): the
+// group is the daily-cadence bucket, and a Mon/Thu chore belongs in it because
+// pinning means "due on those days", not "sometime this week".
+//
+// Worth knowing if these get revisited: an earlier set used deadline words
+// ("This week", "Monthly and occasional"), which read as *not now* for cards that
+// were up right now — everything visible on Today is inside its lead window, so
+// it is due within days. Cadence words avoid that trap; the Due date sort is
+// where deadline words belong, and it has its own headings below.
 export const GROUPS = [
   { key: 'oneoff',  label: 'One-off' },
-  { key: 'daily',   label: 'Every day' },
-  { key: 'weekly',  label: 'This week' },
-  { key: 'monthly', label: 'Monthly and occasional' },
+  { key: 'daily',   label: 'Daily Chores' },
+  { key: 'weekly',  label: 'Weekly Chores' },
+  { key: 'monthly', label: 'Monthly/Longterm' },
 ];
 
 // Which group an assignment belongs to. One-offs are routed by *what they are* —
-// a manual assignment or a `once` chore — before cadence is considered at all,
-// so `period_days` never has to answer for them.
+// a manual assignment or a `once` chore — before cadence is considered at all.
+//
+// Everything else keys straight off `frequency` (#45). A daily chore pinned to
+// Mon/Thu belongs under Daily Chores, because that's what pinning it means: due
+// on those days, not "sometime this week". The old computed-period approach would
+// have filed it under Weekly Chores.
 export function groupKeyFor(a) {
-  if (a.is_one_off || a.assigned_by === 'manual' || a.frequency === 'once') return 'oneoff';
-  const period = Number(a.period_days) || 1;
-  if (period <= 1) return 'daily';
-  if (period <= 7) return 'weekly';
-  return 'monthly';
+  if (a.is_one_off || String(a.assigned_by || '').startsWith('manual') || a.frequency === 'once') {
+    return 'oneoff';
+  }
+  if (a.frequency === 'daily') return 'daily';
+  if (a.frequency === 'weekly') return 'weekly';
+  return 'monthly'; // monthly and interval
 }
 
 // Comparator within a group. Keys in order:
@@ -70,31 +87,58 @@ export function compareWithinGroup(x, y) {
   );
 }
 
-// Sort by due date instead of cadence, for the "Due date" sort option. Finished
-// and sort_last still sink; only the primary key differs from the default.
-export function compareByDue(x, y) {
-  const finished = (a) => (a.status === 'done' || a.status === 'skipped' ? 1 : 0);
-  return (
-    finished(x) - finished(y) ||
-    (x.due_date || '').localeCompare(y.due_date || '') ||
-    (Number(x.points) || 0) - (Number(y.points) || 0)
-  );
+// ─── Due-date grouping (the "Due date" sort option) ───────────────────────────
+//
+// The alternative view re-cuts the SAME cards into date buckets instead of
+// cadence ones. Cards keep their cadence stripe and frequency chip either way —
+// ChoreCard derives those from the assignment, not from the group it sits in —
+// so this reads as the same list regrouped, not a different screen.
+//
+// Note the two modes now differ ONLY in how they group. They used to share the
+// grouping and differ in comparator, which made "Due date" nearly a no-op: within
+// a cadence group the default comparator already sorted by due date, so the only
+// visible effect was that `sort_last` chores stopped sinking.
+export const DUE_GROUPS = [
+  { key: 'overdue', label: 'Overdue' },
+  { key: 'duetoday', label: 'Due today' },
+  { key: 'duesoon', label: 'Due soon' },
+];
+
+// Bucket by due date against the local today. A row with no due date sorts with
+// the future ones rather than being dropped.
+export function dueGroupKeyFor(a, todayStr) {
+  const due = a.due_date?.slice(0, 10);
+  if (!due) return 'duesoon';
+  if (due < todayStr) return 'overdue';
+  if (due === todayStr) return 'duetoday';
+  return 'duesoon';
+}
+
+function buildGroups(defs, keyOf, items) {
+  const buckets = {};
+  for (const a of items ?? []) {
+    (buckets[keyOf(a)] ??= []).push(a);
+  }
+  return defs
+    .filter((g) => buckets[g.key]?.length)
+    .map((g) => ({ ...g, items: [...buckets[g.key]].sort(compareWithinGroup) }));
 }
 
 // Split a person's assignments into the ordered, non-empty cadence groups.
 // Returns [{ key, label, items }] — groups with nothing in them are omitted so
 // the screen never shows an empty heading.
-export function groupByCadence(items, sortMode = 'default') {
-  const buckets = {};
-  for (const a of items ?? []) {
-    const key = groupKeyFor(a);
-    (buckets[key] ??= []).push(a);
-  }
-  const cmp = sortMode === 'due' ? compareByDue : compareWithinGroup;
-  return GROUPS.filter((g) => buckets[g.key]?.length).map((g) => ({
-    ...g,
-    items: [...buckets[g.key]].sort(cmp),
-  }));
+export function groupByCadence(items) {
+  return buildGroups(GROUPS, groupKeyFor, items);
+}
+
+// The same, cut by due date. Finished chores still sink within their bucket, so
+// a completed-but-overdue chore stays greyed out under Overdue.
+export function groupByDue(items, todayStr) {
+  return buildGroups(DUE_GROUPS, (a) => dueGroupKeyFor(a, todayStr), items);
+}
+
+export function groupAssignments(items, sortMode, todayStr) {
+  return sortMode === 'due' ? groupByDue(items, todayStr) : groupByCadence(items);
 }
 
 // Split today's assignments into the Today screen's sections.
@@ -107,9 +151,10 @@ export function splitTodaySections(assignments, currentUser, isAdmin, todayStr, 
     : [];
 
   // Includes the user's own pending_review chores (amber "Waiting for review").
-  const mine = groupByCadence(
+  const mine = groupAssignments(
     todays.filter((a) => a.person_id === myId),
-    sortMode
+    sortMode,
+    todayStr
   );
 
   const familyAssignments = todays.filter(
@@ -124,12 +169,13 @@ export function splitTodaySections(assignments, currentUser, isAdmin, todayStr, 
   const familyGroups = Object.values(familyByPerson).map((g) => ({
     ...g,
     count: g.items.length,
-    groups: groupByCadence(g.items, sortMode),
+    groups: groupAssignments(g.items, sortMode, todayStr),
   }));
 
-  const unassigned = groupByCadence(
+  const unassigned = groupAssignments(
     todays.filter((a) => !a.person_id && a.status === 'open'),
-    sortMode
+    sortMode,
+    todayStr
   );
 
   return { pendingReview, mine, familyGroups, unassigned };
