@@ -71,7 +71,7 @@
 
   <div class="sort-wrap">
     <select class="sort" bind:value={sortMode} aria-label="Sort chores">
-      <option value="default">Sort: Default</option>
+      <option value="default">Sort: Cadence</option>
       <option value="due">Sort: Due date</option>
     </select>
   </div>

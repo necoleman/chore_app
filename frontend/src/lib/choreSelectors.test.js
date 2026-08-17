@@ -4,6 +4,8 @@ import {
   groupKeyFor,
   compareWithinGroup,
   groupByCadence,
+  groupByDue,
+  groupAssignments,
   splitTodaySections,
   choreState,
   reviewerName,
@@ -197,5 +199,65 @@ describe('reviewerName', () => {
     const people = [{ person_id: 'dad', name: 'Dad' }];
     expect(reviewerName(a({ reviewed_by: 'dad' }), people)).toBe('Dad');
     expect(reviewerName(a({}), people)).toBe(null);
+  });
+});
+
+describe('groupByDue (the Due date sort)', () => {
+  const YESTERDAY = '2026-06-27';
+  const TOMORROW = '2026-06-29';
+
+  it('cuts into overdue / due today / due soon, in that order', () => {
+    const list = [
+      a({ due_date: TOMORROW }),
+      a({ due_date: YESTERDAY }),
+      a({ due_date: TODAY }),
+    ];
+    expect(groupByDue(list, TODAY).map((g) => g.key)).toEqual([
+      'overdue',
+      'duetoday',
+      'duesoon',
+    ]);
+  });
+
+  it('omits empty buckets rather than showing a bare heading', () => {
+    const list = [a({ due_date: TODAY }), a({ due_date: TODAY })];
+    expect(groupByDue(list, TODAY).map((g) => g.key)).toEqual(['duetoday']);
+  });
+
+  it('orders the most overdue first', () => {
+    const list = [
+      a({ assignment_id: 'recent', due_date: '2026-06-26' }),
+      a({ assignment_id: 'ancient', due_date: '2026-06-01' }),
+    ];
+    const overdue = groupByDue(list, TODAY)[0];
+    expect(overdue.items.map((x) => x.assignment_id)).toEqual(['ancient', 'recent']);
+  });
+
+  it('keeps finished chores in their date bucket but at the bottom', () => {
+    const list = [
+      a({ assignment_id: 'done', due_date: YESTERDAY, status: 'done' }),
+      a({ assignment_id: 'open', due_date: YESTERDAY, status: 'open' }),
+    ];
+    const overdue = groupByDue(list, TODAY)[0];
+    expect(overdue.key).toBe('overdue');
+    expect(overdue.items.map((x) => x.assignment_id)).toEqual(['open', 'done']);
+  });
+
+  it('regroups the same cards rather than filtering any out', () => {
+    const list = [
+      a({ frequency: 'daily', due_date: TODAY }),
+      a({ frequency: 'weekly', due_date: TOMORROW }),
+      a({ frequency: 'monthly', due_date: YESTERDAY }),
+    ];
+    const byCadence = groupByCadence(list).flatMap((g) => g.items).length;
+    const byDue = groupByDue(list, TODAY).flatMap((g) => g.items).length;
+    expect(byDue).toBe(list.length);
+    expect(byDue).toBe(byCadence);
+  });
+
+  it('groupAssignments picks the mode, defaulting to cadence', () => {
+    const list = [a({ frequency: 'weekly', due_date: TODAY })];
+    expect(groupAssignments(list, 'due', TODAY)[0].key).toBe('duetoday');
+    expect(groupAssignments(list, 'default', TODAY)[0].key).toBe('weekly');
   });
 });

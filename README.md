@@ -438,6 +438,8 @@ Three things are exempt: a `pending_review` occurrence is left alone (the work w
 
 **Today screen behavior:** Each person's chores are grouped under **One-off**, **Today**, **This Week** and **This Month**, in that order, each heading carrying a coloured dot matched by a stripe down the left of its cards. One-offs lead because nothing regenerates them. Within a group, order is: overdue first, then due today, then chores appearing early via `lead_days`, with `sort_last` chores and then finished ones at the bottom; equal chores are ordered cheapest-first, so quick wins come before big jobs.
 
+A **Sort** dropdown switches how the same cards are cut. **Cadence** is the default above. **Due date** regroups them under **Overdue**, **Due today** and **Due soon** instead, ordering within each the same way. Cards keep their cadence stripe and frequency chip in both modes, so the heading dot answers *how soon* while the stripe answers *how often*.
+
 Your own chores are open by default and each family member is a separate collapsible section, so you can check one person without scrolling past everybody. Nothing folds *inside* a person's list — `lead_days` already decides when a chore should become visible.
 
 Pending-approval chores show in amber (the assignee sees their own as "Waiting for review") and are **never** marked overdue: the assignee finished on time, and the delay is the reviewer's. A completed chore can be **unchecked** (undo) by the assignee or an admin via the card's "Undo" button, which reverts it to open and removes any awarded points — *except* chores that a parent has already **approved**, which cannot be unchecked.

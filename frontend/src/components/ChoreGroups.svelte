@@ -47,13 +47,20 @@
     flex: none;
   }
 
-  /* Warm to cool to neutral reads as an urgency ramp without a legend. */
-  /* Daily teal, weekly coral. Keep these in step with the stripe and frequency
-     chip in ChoreCard — the three are read as one signal. */
+  /* Cadence grouping. Daily teal, weekly coral. Keep these in step with the
+     stripe and frequency chip in ChoreCard — the three are read as one signal. */
   .dot--oneoff { background: #7f77dd; }
   .dot--daily { background: #1d9e75; }
   .dot--weekly { background: #d85a30; }
   .dot--monthly { background: #888780; }
+
+  /* Due-date grouping. A separate ramp, borrowed from the overdue and missed
+     chips so the heading and the card chips agree on what red means. Cards keep
+     their cadence stripe in this mode, so the two systems appear side by side —
+     dot answers "how soon", stripe answers "how often". */
+  .dot--overdue { background: #a32d2d; }
+  .dot--duetoday { background: #b45309; }
+  .dot--duesoon { background: #888780; }
 
   .group-title {
     font-size: 13px;

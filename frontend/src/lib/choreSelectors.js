@@ -89,31 +89,58 @@ export function compareWithinGroup(x, y) {
   );
 }
 
-// Sort by due date instead of cadence, for the "Due date" sort option. Finished
-// and sort_last still sink; only the primary key differs from the default.
-export function compareByDue(x, y) {
-  const finished = (a) => (a.status === 'done' || a.status === 'skipped' ? 1 : 0);
-  return (
-    finished(x) - finished(y) ||
-    (x.due_date || '').localeCompare(y.due_date || '') ||
-    (Number(x.points) || 0) - (Number(y.points) || 0)
-  );
+// ─── Due-date grouping (the "Due date" sort option) ───────────────────────────
+//
+// The alternative view re-cuts the SAME cards into date buckets instead of
+// cadence ones. Cards keep their cadence stripe and frequency chip either way —
+// ChoreCard derives those from the assignment, not from the group it sits in —
+// so this reads as the same list regrouped, not a different screen.
+//
+// Note the two modes now differ ONLY in how they group. They used to share the
+// grouping and differ in comparator, which made "Due date" nearly a no-op: within
+// a cadence group the default comparator already sorted by due date, so the only
+// visible effect was that `sort_last` chores stopped sinking.
+export const DUE_GROUPS = [
+  { key: 'overdue', label: 'Overdue' },
+  { key: 'duetoday', label: 'Due today' },
+  { key: 'duesoon', label: 'Due soon' },
+];
+
+// Bucket by due date against the local today. A row with no due date sorts with
+// the future ones rather than being dropped.
+export function dueGroupKeyFor(a, todayStr) {
+  const due = a.due_date?.slice(0, 10);
+  if (!due) return 'duesoon';
+  if (due < todayStr) return 'overdue';
+  if (due === todayStr) return 'duetoday';
+  return 'duesoon';
+}
+
+function buildGroups(defs, keyOf, items) {
+  const buckets = {};
+  for (const a of items ?? []) {
+    (buckets[keyOf(a)] ??= []).push(a);
+  }
+  return defs
+    .filter((g) => buckets[g.key]?.length)
+    .map((g) => ({ ...g, items: [...buckets[g.key]].sort(compareWithinGroup) }));
 }
 
 // Split a person's assignments into the ordered, non-empty cadence groups.
 // Returns [{ key, label, items }] — groups with nothing in them are omitted so
 // the screen never shows an empty heading.
-export function groupByCadence(items, sortMode = 'default') {
-  const buckets = {};
-  for (const a of items ?? []) {
-    const key = groupKeyFor(a);
-    (buckets[key] ??= []).push(a);
-  }
-  const cmp = sortMode === 'due' ? compareByDue : compareWithinGroup;
-  return GROUPS.filter((g) => buckets[g.key]?.length).map((g) => ({
-    ...g,
-    items: [...buckets[g.key]].sort(cmp),
-  }));
+export function groupByCadence(items) {
+  return buildGroups(GROUPS, groupKeyFor, items);
+}
+
+// The same, cut by due date. Finished chores still sink within their bucket, so
+// a completed-but-overdue chore stays greyed out under Overdue.
+export function groupByDue(items, todayStr) {
+  return buildGroups(DUE_GROUPS, (a) => dueGroupKeyFor(a, todayStr), items);
+}
+
+export function groupAssignments(items, sortMode, todayStr) {
+  return sortMode === 'due' ? groupByDue(items, todayStr) : groupByCadence(items);
 }
 
 // Split today's assignments into the Today screen's sections.
@@ -126,9 +153,10 @@ export function splitTodaySections(assignments, currentUser, isAdmin, todayStr, 
     : [];
 
   // Includes the user's own pending_review chores (amber "Waiting for review").
-  const mine = groupByCadence(
+  const mine = groupAssignments(
     todays.filter((a) => a.person_id === myId),
-    sortMode
+    sortMode,
+    todayStr
   );
 
   const familyAssignments = todays.filter(
@@ -143,12 +171,13 @@ export function splitTodaySections(assignments, currentUser, isAdmin, todayStr, 
   const familyGroups = Object.values(familyByPerson).map((g) => ({
     ...g,
     count: g.items.length,
-    groups: groupByCadence(g.items, sortMode),
+    groups: groupAssignments(g.items, sortMode, todayStr),
   }));
 
-  const unassigned = groupByCadence(
+  const unassigned = groupAssignments(
     todays.filter((a) => !a.person_id && a.status === 'open'),
-    sortMode
+    sortMode,
+    todayStr
   );
 
   return { pendingReview, mine, familyGroups, unassigned };
