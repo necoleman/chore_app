@@ -31,39 +31,37 @@ export function filterTodayAssignments(assignments, todayStr) {
 // A person's list is split into four groups rather than colour-coded, because a
 // heading states things in words and needs no legend. Order is fixed:
 //
-//   One-off → Today → This Week → This Month
+//   One-off → Daily Chores → Weekly Chores → Monthly/Longterm
 //
 // One-offs lead because nothing regenerates them. A missed daily chore returns
 // tomorrow by itself; a missed one-off just sits wherever it was filed, and it
 // exists precisely because somebody asked for it specially.
-// The labels read as an urgency ladder — soonest first — rather than naming each
-// group's cadence. The buckets are still cut on frequency (see groupKeyFor); only
-// the headings changed.
+// The labels name each group's cadence. Order still runs soonest-first, so the
+// list reads as an urgency ramp even though the words describe rhythm.
 //
-// Each one is true of its group: daily chores have a lead of 1 so they appear on
-// the due date itself, weekly's lead of 4 keeps it inside the week, and monthly
-// and interval leads cap at 7 days. They are NESTED rather than exclusive — a
-// daily chore is also due this week — which is fine because the reading order
-// carries the meaning: the top group is the most urgent, not the only urgent one.
+// "Daily Chores" covers daily chores pinned to specific weekdays too (#45): the
+// group is the daily-cadence bucket, and a Mon/Thu chore belongs in it because
+// pinning means "due on those days", not "sometime this week".
 //
-// Worth knowing if these get revisited: the previous set mixed two axes ("Every
-// day" and "One-off" named a rhythm, "This week" named a deadline), and "Every
-// day" had stopped being true once #45 let daily chores be pinned to Mon/Thu.
-// Any replacement should pick one axis and stay on it.
+// Worth knowing if these get revisited: an earlier set used deadline words
+// ("This week", "Monthly and occasional"), which read as *not now* for cards that
+// were up right now — everything visible on Today is inside its lead window, so
+// it is due within days. Cadence words avoid that trap; the Due date sort is
+// where deadline words belong, and it has its own headings below.
 export const GROUPS = [
   { key: 'oneoff',  label: 'One-off' },
-  { key: 'daily',   label: 'Today' },
-  { key: 'weekly',  label: 'This Week' },
-  { key: 'monthly', label: 'This Month' },
+  { key: 'daily',   label: 'Daily Chores' },
+  { key: 'weekly',  label: 'Weekly Chores' },
+  { key: 'monthly', label: 'Monthly/Longterm' },
 ];
 
 // Which group an assignment belongs to. One-offs are routed by *what they are* —
 // a manual assignment or a `once` chore — before cadence is considered at all.
 //
 // Everything else keys straight off `frequency` (#45). A daily chore pinned to
-// Mon/Thu belongs under Today, because that's what pinning it means: due on
-// those days, not "sometime this week". The old computed-period approach would
-// have filed it under This Week.
+// Mon/Thu belongs under Daily Chores, because that's what pinning it means: due
+// on those days, not "sometime this week". The old computed-period approach would
+// have filed it under Weekly Chores.
 export function groupKeyFor(a) {
   if (a.is_one_off || String(a.assigned_by || '').startsWith('manual') || a.frequency === 'once') {
     return 'oneoff';

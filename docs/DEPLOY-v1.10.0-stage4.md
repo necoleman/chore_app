@@ -70,7 +70,7 @@ lasts only until the merge lands.
 Run `runNightlyGenerator` by hand, then check:
 
 - chores that were `custom` now read `daily` with weekdays in `weekday_due`
-- they appear under **Today** on the Today screen, not This Week
+- they appear under **Daily Chores** on the Today screen, not Weekly Chores
 - a weekly chore still lands on its usual day
 - a monthly "second Friday" chore still resolves correctly
 
@@ -114,19 +114,22 @@ snapped date, so the schedule drifts a little later each cycle. That was chosen
 deliberately, but it's worth knowing.
 
 Also deleted `sortPeriodDays`: cadence grouping keys straight off `frequency` now,
-which is more correct under this model — a Mon/Thu chore belongs under **Today**,
-where the old arithmetic filed it under This Week.
+which is more correct under this model — a Mon/Thu chore belongs under **Daily
+Chores**, where the old arithmetic filed it under Weekly Chores.
 
-**The Today group headings are renamed** to One-off / Today / This Week / This
-Month, reading as an urgency ladder. The groupings themselves are unchanged — only
-the labels. Each is true of its group, since lead windows keep daily chores on
-their due date, weekly inside the week, and monthly/interval within about seven
-days. They're nested rather than exclusive — a daily chore is also due this week —
-which the reading order handles: the top group is the most urgent, not the only
-urgent one. The old "Every day" had stopped being true once daily chores could be
-pinned to Mon/Thu, and "Monthly and occasional" read as *not now* for cards that
-are up right now. The daily and weekly colours also swap — daily teal, weekly
-coral.
+**The Today group headings are renamed** to One-off / Daily Chores / Weekly
+Chores / Monthly-Longterm. Groupings unchanged — labels only. The old "Every day"
+had stopped being true once daily chores could be pinned to Mon/Thu, and "Monthly
+and occasional" read as *not now* for cards that are up right now, since
+everything on Today is inside its lead window and therefore due within days. The
+daily and weekly colours also swap — daily teal, weekly coral.
+
+**The "Sort: Due date" option now actually does something.** It used to group by
+cadence like the default and differ only in comparator — but the default already
+sorted by due date inside each group, so switching only stopped `sort_last` chores
+sinking. It now re-cuts the same cards under **Overdue / Due today / Due soon**.
+Cards keep their cadence stripe in that mode, so the heading dot says *how soon*
+and the stripe says *how often*. The default option is relabelled "Sort: Cadence".
 
 **Non-admins can now reach the Chores tab.** They get a read-only view whose only
 control is the per-row **Add** button, so they can pull a chore onto Today without
