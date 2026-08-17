@@ -2,6 +2,7 @@ import { writable, get } from 'svelte/store';
 import { get as apiGet, post } from '../api/client.js';
 import { showToast } from './ui.js';
 import { today } from '../lib/utils.js';
+import { appearDate } from '../lib/dueDates.js';
 
 export const assignments = writable([]);
 export const people = writable([]);
@@ -219,21 +220,33 @@ export async function reassignAssignment(assignment_id, person_id, admin_person_
 
 export async function bumpAssignment(assignment_id, due_date, admin_person_id) {
   const prev = getAssignment(assignment_id);
-  // If bumped to a future date, remove from today's view optimistically.
   const todayISO = today();
-  if (due_date !== todayISO) {
-    assignments.update((list) => list.filter((a) => a.assignment_id !== assignment_id));
-  } else {
+
+  // Whether the card survives a move is decided by its APPEAR date, not its due
+  // date — a monthly chore with a 7-day lead is visible a week ahead of time.
+  // This used to compare the new due date against today and drop the card unless
+  // they matched exactly, which removed cards the Today filter would still have
+  // shown. Push hit it every time: pushing 7 days on a 7-day lead lands the
+  // appear date exactly on today, so the card belonged on screen and vanished
+  // anyway until the next refresh brought it back.
+  //
+  // Mirrors filterTodayAssignments — keep the two in step.
+  const stillVisible = appearDate(due_date, prev?.lead_days) <= todayISO;
+
+  if (stillVisible) {
     updateAssignment(assignment_id, { due_date, _optimistic: true });
+  } else {
+    assignments.update((list) => list.filter((a) => a.assignment_id !== assignment_id));
   }
+
   try {
     await post('bump', { assignment_id, due_date, admin_person_id });
+    if (stillVisible) updateAssignment(assignment_id, { _optimistic: false });
   } catch (e) {
-    // Re-insert or roll back
-    if (due_date !== todayISO) {
-      assignments.update((list) => [...list, prev]);
-    } else {
+    if (stillVisible) {
       rollbackAssignment(assignment_id, prev);
+    } else {
+      assignments.update((list) => [...list, prev]);
     }
     showToast('Could not reschedule — try again');
   }
