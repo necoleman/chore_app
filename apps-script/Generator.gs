@@ -130,10 +130,17 @@ function processChoreGeneration(chore, today, allAssignments, people) {
   var assignmentId = chore.chore_id + '_' + nextDueISO.replace(/-/g, '');
 
   // The id encodes the due date, so two occurrences of one chore on the same
-  // date collide. The schedule alone can't produce that — but a hand-edited
-  // `due_date` leaves the ORIGINAL date in the id, so a later occurrence can
-  // mint an id that already exists, and the `existing` check above misses it
-  // because that compares due dates, not ids.
+  // date collide. The schedule alone can't produce that — but ANYTHING that
+  // moves a due date leaves the ORIGINAL date in the id, and then a later
+  // occurrence can mint an id that already exists. The `existing` check above
+  // misses it because that compares due dates, not ids.
+  //
+  // Note this is reachable through ordinary use, not just a hand-edited sheet:
+  // `actionBump` backs both **Move date** and **Push**, and neither rewrites the
+  // id. Move an occurrence off its date and the id it was born with is left
+  // free for the schedule to hand out again. That is exactly how the live case
+  // arose — an occurrence moved from the 23rd to the 18th, then the genuine
+  // 23rd occurrence generated on top of its abandoned id.
   //
   // A duplicate is close to invisible and very hard to diagnose: the older row is
   // usually closed and filtered off Today, so you see one card — but every lookup

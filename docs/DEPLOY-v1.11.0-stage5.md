@@ -118,10 +118,11 @@ someone at zero who misses a 45-point chore and then does a 10-point one sees
 
 **Duplicate assignment ids can no longer be created silently.** An assignment id
 is `chore_id` + due date, so two occurrences of one chore on the same date
-collide. The schedule can't produce that on its own, but a hand-edited `due_date`
+collide. The schedule can't produce that on its own, but anything that MOVES a due date
 leaves the original date in the id, letting a later occurrence mint one that
 already exists — and the generator's existing-occurrence check compares due
-dates, not ids, so it missed this.
+dates, not ids, so it missed this. This is reachable through ordinary use:
+**Move date** and **Push** both change `due_date` without rewriting the id.
 
 The result was near-invisible and badly misleading: the older row is usually
 closed and filtered off Today, so you see one card, but every lookup uses
