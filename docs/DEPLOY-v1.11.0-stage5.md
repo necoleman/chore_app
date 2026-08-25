@@ -49,6 +49,7 @@ Then check the two fixes:
   schedule should move even though no occurrence has been generated yet. Check
   `last_generated_date` on the Chores tab — it should read one interval before
   the date you picked.
+- On **Leaders**, nobody should show a negative number in any window
 
 And on the Today screen, the group headings should read **Daily Chores**,
 **Weekend Chores**, **Monthly/Longterm Chores Due This Week**.
@@ -100,6 +101,17 @@ you asked for. The field is labelled **"Next due date"** for interval chores and
 **"Start date (optional)"** for the others, since it genuinely means two
 different things: the next due date in one case, a "not before" floor in the
 other.
+
+**The leaderboard never shows negative points.** All time was already floored —
+`incrementPoints` clamps `points_total` at 0, so a run of misses never pushed
+anyone below zero. But Today/Week/Month are summed from the log, where each miss
+is a negative `points_awarded`, so those windows could read −45 for a week in
+which the balance never actually moved below 0. They're floored now too, which
+makes the four figures agree.
+
+The floor applies to the window total, not to each row as it accumulates — so
+someone 45 down for the week reads 0 until their completions outweigh the misses,
+rather than climbing from the first one.
 
 **The Today cadence headings are renamed** to Daily Chores / Weekend Chores /
 Monthly-Longterm Chores Due This Week. Labels only — the grouping is unchanged.

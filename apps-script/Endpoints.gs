@@ -156,12 +156,19 @@ function actionLocations(params) {
 // The short windows are summed from the Assignments log, bucketed by when the
 // work actually happened (`completed_at`, falling back to `due_date` — the same
 // rule actionHistory sorts by). A missed occurrence records its penalty as a
-// negative `points_awarded`, so these net out losses automatically.
+// negative `points_awarded`, so these net out losses — then get floored at 0
+// before they're returned (#56).
 //
 // All time deliberately uses the running `points_total` instead: it's a tally
 // rather than a query, so archiving old Assignments rows (see spec §9) can't
-// truncate it. Note it is floored at 0 by incrementPoints, so it can read
-// slightly higher than a true sum of the log.
+// truncate it. incrementPoints floors it at 0 too, which is what the window
+// floor is matching: a run of misses never pushed the balance below zero, so a
+// window reporting −45 would be describing something that didn't happen.
+//
+// The floor is applied to the window TOTAL, not to each row as it accumulates.
+// So someone 45 down for the week reads 0 until their completions outweigh the
+// misses, rather than climbing from the first one. Clamping per row would show
+// recovery sooner but would no longer be a sum of anything.
 function actionLeaderboard(params) {
   var people = getRows('People');
   var assignments = getRows('Assignments');
@@ -199,9 +206,14 @@ function actionLeaderboard(params) {
       on_vacation:    p.on_vacation === true || p.on_vacation === 'TRUE',
       streak_current: parseInt(p.streak_current, 10) || 0,
       streak_best:    parseInt(p.streak_best, 10) || 0,
-      points_today:   t.today,
-      points_week:    t.week,
-      points_month:   t.month,
+      // Floored at 0, matching what actually happened to the person's balance:
+      // incrementPoints clamps `points_total` the same way, so a run of misses
+      // never pushed them below zero in the first place. Without this the window
+      // figures contradict the All-time one — showing −45 for a week in which
+      // the balance never moved below 0 (#56).
+      points_today:   Math.max(0, t.today),
+      points_week:    Math.max(0, t.week),
+      points_month:   Math.max(0, t.month),
       points_all:     parseInt(p.points_total, 10) || 0,
     };
   });
