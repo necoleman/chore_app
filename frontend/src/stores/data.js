@@ -108,7 +108,7 @@ export async function completeAssignment(assignment_id, person_id, admin_person_
     if (payload.admin_person_id) await refresh();
   } catch (e) {
     rollbackAssignment(assignment_id, prev);
-    showToast('Could not mark done — try again');
+    showToast(e.message || 'Could not mark done — try again');
   }
 }
 
@@ -138,7 +138,7 @@ export async function skipAssignment(assignment_id, admin_person_id) {
     updateAssignment(assignment_id, { _optimistic: false });
   } catch (e) {
     rollbackAssignment(assignment_id, prev);
-    showToast('Could not skip — try again');
+    showToast(e.message || 'Could not skip — try again');
   }
 }
 
@@ -190,7 +190,7 @@ export async function approveAssignment(assignment_id, admin_person_id) {
     updateAssignment(assignment_id, { ...result, _optimistic: false });
   } catch (e) {
     rollbackAssignment(assignment_id, prev);
-    showToast('Could not approve — try again');
+    showToast(e.message || 'Could not approve — try again');
   }
 }
 
@@ -202,7 +202,7 @@ export async function rejectAssignment(assignment_id, admin_person_id, review_no
     updateAssignment(assignment_id, { ...result, _optimistic: false });
   } catch (e) {
     rollbackAssignment(assignment_id, prev);
-    showToast('Could not reject — try again');
+    showToast(e.message || 'Could not reject — try again');
   }
 }
 
@@ -223,7 +223,7 @@ export async function reassignAssignment(assignment_id, person_id, admin_person_
     updateAssignment(assignment_id, { _optimistic: false });
   } catch (e) {
     rollbackAssignment(assignment_id, prev);
-    showToast('Could not reassign — try again');
+    showToast(e.message || 'Could not reassign — try again');
   }
 }
 
@@ -257,6 +257,6 @@ export async function bumpAssignment(assignment_id, due_date, admin_person_id) {
     } else {
       assignments.update((list) => [...list, prev]);
     }
-    showToast('Could not reschedule — try again');
+    showToast(e.message || 'Could not reschedule — try again');
   }
 }
