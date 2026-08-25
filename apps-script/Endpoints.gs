@@ -156,19 +156,16 @@ function actionLocations(params) {
 // The short windows are summed from the Assignments log, bucketed by when the
 // work actually happened (`completed_at`, falling back to `due_date` — the same
 // rule actionHistory sorts by). A missed occurrence records its penalty as a
-// negative `points_awarded`, so these net out losses — then get floored at 0
-// before they're returned (#56).
+// negative `points_awarded`. Rather than summing those, each window REPLAYS the
+// person's events in order and clamps at zero after every one (#56) — so no
+// figure is ever negative, and a debt the balance already absorbed doesn't
+// linger to be worked off again.
 //
 // All time deliberately uses the running `points_total` instead: it's a tally
 // rather than a query, so archiving old Assignments rows (see spec §9) can't
-// truncate it. incrementPoints floors it at 0 too, which is what the window
-// floor is matching: a run of misses never pushed the balance below zero, so a
-// window reporting −45 would be describing something that didn't happen.
-//
-// The floor is applied to the window TOTAL, not to each row as it accumulates.
-// So someone 45 down for the week reads 0 until their completions outweigh the
-// misses, rather than climbing from the first one. Clamping per row would show
-// recovery sooner but would no longer be a sum of anything.
+// truncate it. incrementPoints clamps it the same way after every write, and the
+// replay above is what makes the windows agree with it — both now describe the
+// same thing, a balance that stops at zero as it goes.
 function actionLeaderboard(params) {
   var people = getRows('People');
   var assignments = getRows('Assignments');
@@ -177,11 +174,11 @@ function actionLeaderboard(params) {
   var weekStart = getWeekStart();
   var monthStart = today.slice(0, 8) + '01';
 
-  var totals = {};
-  people.forEach(function(p) { totals[p.person_id] = { today: 0, week: 0, month: 0 }; });
+  var events = {};
+  people.forEach(function(p) { events[p.person_id] = []; });
 
   assignments.forEach(function(a) {
-    if (!a.person_id || !totals[a.person_id]) return;
+    if (!a.person_id || !events[a.person_id]) return;
     var pts = parseInt(a.points_awarded, 10);
     if (!pts) return;
     // Resolve the completion INSTANT in the script timezone rather than slicing
@@ -191,13 +188,36 @@ function actionLeaderboard(params) {
     // completedOnLocalDate for this since v1.8.1; the leaderboard didn't.
     var when = localDateOf(a.completed_at) || String(a.due_date || '').slice(0, 10);
     if (!when) return;
-    if (when >= monthStart) totals[a.person_id].month += pts;
-    if (when >= weekStart) totals[a.person_id].week += pts;
-    if (when === today) totals[a.person_id].today += pts;
+    events[a.person_id].push({ when: when, at: completionInstant(a), pts: pts });
   });
 
+  // Replay a person's events in the order they happened, clamping at zero after
+  // each one — which is exactly what incrementPoints does to `points_total`.
+  //
+  // A plain sum-then-clamp would not do: it remembers a debt the running balance
+  // had already absorbed. Someone at zero who misses a 45-point chore is still
+  // at zero, and their next chore must show up straight away — under a
+  // sum-then-clamp they would have to earn 45 points before the figure moved off
+  // 0, which is the opposite of the encouragement the floor exists to give.
+  //
+  // Ordering matters, so the events are sorted by instant. Missed occurrences
+  // carry no completion time and fall back to their due date at midnight, which
+  // correctly places the 3am penalty before anything completed later that day.
+  function balanceOver(list, keep) {
+    var total = 0;
+    list.forEach(function(e) {
+      if (!keep(e.when)) return;
+      total = Math.max(0, total + e.pts);
+    });
+    return total;
+  }
+
   var result = people.map(function(p) {
-    var t = totals[p.person_id] || { today: 0, week: 0, month: 0 };
+    // Sorted once, then replayed over each window independently — a week's
+    // balance starts fresh at the week boundary, not where the month was.
+    var log = (events[p.person_id] || []).slice().sort(function(x, y) {
+      return x.at - y.at;
+    });
     return {
       person_id:      p.person_id,
       name:           p.name,
@@ -206,14 +226,9 @@ function actionLeaderboard(params) {
       on_vacation:    p.on_vacation === true || p.on_vacation === 'TRUE',
       streak_current: parseInt(p.streak_current, 10) || 0,
       streak_best:    parseInt(p.streak_best, 10) || 0,
-      // Floored at 0, matching what actually happened to the person's balance:
-      // incrementPoints clamps `points_total` the same way, so a run of misses
-      // never pushed them below zero in the first place. Without this the window
-      // figures contradict the All-time one — showing −45 for a week in which
-      // the balance never moved below 0 (#56).
-      points_today:   Math.max(0, t.today),
-      points_week:    Math.max(0, t.week),
-      points_month:   Math.max(0, t.month),
+      points_today:   balanceOver(log, function(w) { return w === today; }),
+      points_week:    balanceOver(log, function(w) { return w >= weekStart; }),
+      points_month:   balanceOver(log, function(w) { return w >= monthStart; }),
       points_all:     parseInt(p.points_total, 10) || 0,
     };
   });
