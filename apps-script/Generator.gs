@@ -128,6 +128,24 @@ function processChoreGeneration(chore, today, allAssignments, people) {
   }
 
   var assignmentId = chore.chore_id + '_' + nextDueISO.replace(/-/g, '');
+
+  // The id encodes the due date, so two occurrences of one chore on the same
+  // date collide. The schedule alone can't produce that — but a hand-edited
+  // `due_date` leaves the ORIGINAL date in the id, so a later occurrence can
+  // mint an id that already exists, and the `existing` check above misses it
+  // because that compares due dates, not ids.
+  //
+  // A duplicate is close to invisible and very hard to diagnose: the older row is
+  // usually closed and filtered off Today, so you see one card — but every lookup
+  // uses find(), which takes the FIRST match. Completing the live occurrence then
+  // hits the stale twin and fails with "Assignment is not open", every time,
+  // for that chore only (#58).
+  if (allAssignments.some(function(a) { return a.assignment_id === assignmentId; })) {
+    assignmentId = assignmentId + '_' + Utilities.getUuid().slice(0, 4);
+    Logger.log('Duplicate assignment id for ' + chore.chore_id + ' on ' + nextDueISO +
+               ' — created as ' + assignmentId + '. Check for a hand-edited due_date.');
+  }
+
   appendRow('Assignments', {
     assignment_id: assignmentId,
     chore_id: chore.chore_id,

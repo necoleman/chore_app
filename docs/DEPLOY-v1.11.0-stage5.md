@@ -4,7 +4,8 @@ Branch: **`stage-5`**
 
 **Deploy Stage 4 first** — this builds on it.
 
-No spreadsheet changes this time. No new columns, no migration.
+No new columns and no migration — but see the duplicate-id note at the end,
+which may need a one-off tidy in the Assignments tab.
 
 ---
 
@@ -14,9 +15,10 @@ No spreadsheet changes this time. No new columns, no migration.
 cd frontend && npm test
 ```
 
-## 2. Apps Script — ONE file
+## 2. Apps Script — TWO files
 
 - `Endpoints.gs`
+- `Generator.gs`
 
 Then **Deploy → Manage deployments → Edit → New version → Deploy**.
 
@@ -113,6 +115,26 @@ balance had sat at 0 throughout. Each window now **replays** the person's events
 in order and clamps at zero after each one, exactly as `incrementPoints` does. So
 someone at zero who misses a 45-point chore and then does a 10-point one sees
 **10**, not 0 — no debt to work off, because the balance never carried one.
+
+**Duplicate assignment ids can no longer be created silently.** An assignment id
+is `chore_id` + due date, so two occurrences of one chore on the same date
+collide. The schedule can't produce that on its own, but a hand-edited `due_date`
+leaves the original date in the id, letting a later occurrence mint one that
+already exists — and the generator's existing-occurrence check compares due
+dates, not ids, so it missed this.
+
+The result was near-invisible and badly misleading: the older row is usually
+closed and filtered off Today, so you see one card, but every lookup uses
+`find()` and takes the FIRST match. Completing the live occurrence hit the stale
+twin and failed with "Assignment is not open" — every time, for that chore only.
+The generator now disambiguates and logs it.
+
+**If any already exist**, find them with `=FILTER(A2:A, COUNTIF(A2:A, A2:A)>1)`
+over the `assignment_id` column and give the closed twin a suffix like `_old`.
+Ids are only ever compared whole, so renaming is safe.
+
+**Errors now say what actually went wrong.** Six actions replaced the server's
+message with a generic "try again", including the one above.
 
 **The Today cadence headings are renamed** to Daily Chores / Weekend Chores /
 Monthly-Longterm Chores Due This Week. Labels only — the grouping is unchanged.
