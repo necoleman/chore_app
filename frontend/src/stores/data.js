@@ -90,13 +90,22 @@ function getAssignment(assignment_id) {
   return get(assignments).find((a) => a.assignment_id === assignment_id) ?? null;
 }
 
-export async function completeAssignment(assignment_id, person_id) {
+// `person_id` is who gets the credit. `admin_person_id` is who tapped it, and is
+// only sent when the two differ — an admin ticking a child's chore (#53). Points
+// still go to `person_id`; the admin's involvement is what skips the review step.
+export async function completeAssignment(assignment_id, person_id, admin_person_id) {
   const prev = getAssignment(assignment_id);
   // Optimistic: guess the final state. The server will return the real status.
   updateAssignment(assignment_id, { status: 'done', _optimistic: true });
   try {
-    const result = await post('complete', { assignment_id, person_id });
+    const payload = { assignment_id, person_id };
+    if (admin_person_id && admin_person_id !== person_id) {
+      payload.admin_person_id = admin_person_id;
+    }
+    const result = await post('complete', payload);
     updateAssignment(assignment_id, { ...result, _optimistic: false });
+    // Someone else's points changed, so the leaderboard and their card are stale.
+    if (payload.admin_person_id) await refresh();
   } catch (e) {
     rollbackAssignment(assignment_id, prev);
     showToast('Could not mark done — try again');

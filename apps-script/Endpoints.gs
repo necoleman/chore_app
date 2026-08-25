@@ -261,6 +261,11 @@ function actionHistory(params) {
 function actionComplete(body) {
   var assignmentId = body.assignment_id;
   var personId = body.person_id;
+  // Who TAPPED it, which isn't always who gets the credit: an admin can check a
+  // chore off on someone else's behalf (#53), for when they know the work was
+  // done and the kid never marked it. Absent in the ordinary case, where the two
+  // are the same person and everything below behaves exactly as it always has.
+  var actorId = body.admin_person_id || personId;
 
   var assignments = getRows('Assignments');
   var assignment = assignments.find(function(a) { return a.assignment_id === assignmentId; });
@@ -275,8 +280,17 @@ function actionComplete(body) {
   var person = people.find(function(p) { return p.person_id === personId; });
   if (!person) throw new Error('Person not found');
 
+  var actor = (actorId === personId)
+    ? person
+    : people.find(function(p) { return p.person_id === actorId; });
+  if (!actor) throw new Error('Person not found');
+  var onBehalf = actor.person_id !== person.person_id;
+
   var requiresApproval = chore.requires_approval === true || chore.requires_approval === 'TRUE';
-  var isAdmin = person.is_admin === true || person.is_admin === 'TRUE';
+  // Checked against whoever is ACTING. The review step exists so a parent can
+  // vouch for the work — when the parent is the one ticking the box, that has
+  // already happened, so it would only ask them to approve themselves.
+  var isAdmin = actor.is_admin === true || actor.is_admin === 'TRUE';
   var now = nowIso();
 
   if (requiresApproval && !isAdmin) {
@@ -294,15 +308,25 @@ function actionComplete(body) {
     return { status: 'pending_review', completed_at: now };
   } else {
     var points = parseInt(chore.points, 10) || 0;
-    updateRow('Assignments', 'assignment_id', assignmentId, {
+    var doneUpdates = {
       status: 'done',
       completed_at: now,
       person_id: personId,
       points_awarded: points,
+      // Deliberately NOT `reviewed_by`, even when an admin ticked this for
+      // someone else. That field means "approved", and `canUncheck` treats its
+      // presence as final — setting it here would stop the admin undoing a chore
+      // they'd just ticked by mistake, which is the opposite of the intent.
       reviewed_by: '',
       reviewed_at: '',
       review_note: '',
-    });
+    };
+    if (onBehalf) {
+      // The audit trail instead: who actually pressed it.
+      doneUpdates.last_modified_by = actorId;
+      doneUpdates.last_modified_at = now;
+    }
+    updateRow('Assignments', 'assignment_id', assignmentId, doneUpdates);
     incrementPoints(personId, points, people);
     anchorIntervalOnCompletion(assignment.chore_id, todayStr());
     invalidateCache('Assignments');

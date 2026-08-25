@@ -17,6 +17,7 @@ import {
   reassignAssignment,
   quickAddChore,
   bumpAssignment,
+  completeAssignment,
 } from './data.js';
 import { today } from '../lib/utils.js';
 
@@ -218,5 +219,34 @@ describe('bumpAssignment (#52)', () => {
     post.mockRejectedValueOnce(new Error('nope'));
     await bumpAssignment('m', dayOffset(30), 'admin');
     expect(get(assignments).find((a) => a.assignment_id === 'm')).toBeDefined();
+  });
+});
+
+describe('completeAssignment on another person\'s behalf (#53)', () => {
+  it('omits admin_person_id when you complete your own chore', async () => {
+    seed([{ assignment_id: 'x', person_id: 'me', status: 'open' }]);
+    post.mockResolvedValueOnce({ status: 'done', points_awarded: 3 });
+    await completeAssignment('x', 'me', 'me');
+    expect(post).toHaveBeenCalledWith('complete', { assignment_id: 'x', person_id: 'me' });
+  });
+
+  it('sends admin_person_id when an admin completes for a child', async () => {
+    seed([{ assignment_id: 'x', person_id: 'p_kid', status: 'open' }]);
+    post.mockResolvedValueOnce({ status: 'done', points_awarded: 3 });
+    apiGet.mockResolvedValue({ assignments: [], people: [] });
+    await completeAssignment('x', 'p_kid', 'p_rachel');
+    expect(post).toHaveBeenCalledWith('complete', {
+      assignment_id: 'x',
+      person_id: 'p_kid',
+      admin_person_id: 'p_rachel',
+    });
+  });
+
+  it('credits the child, not the admin', async () => {
+    seed([{ assignment_id: 'x', person_id: 'p_kid', status: 'open' }]);
+    post.mockResolvedValueOnce({ status: 'done', person_id: 'p_kid', points_awarded: 3 });
+    apiGet.mockResolvedValue({ assignments: [], people: [] });
+    await completeAssignment('x', 'p_kid', 'p_rachel');
+    expect(post.mock.calls[0][1].person_id).toBe('p_kid');
   });
 });

@@ -28,7 +28,7 @@
   $: cs = choreState(assignment, $currentUser, { showAdminControls, readonly, todayStr: today() });
   $: ({
     isOpen, isPending, isDone, isSkipped, isRejected, isMine, isUnassigned,
-    isOverdue, showApproveReject, isInteractive, canUncheck,
+    isOverdue, showApproveReject, isInteractive, canUncheck, canCompleteForOther,
   } = cs);
 
   // A non-empty review_note only persists on a sent-back, not-yet-redone chore
@@ -41,7 +41,15 @@
     if (isUnassigned) {
       claimAssignment(assignment.assignment_id, $currentUser.person_id);
     } else {
-      completeAssignment(assignment.assignment_id, $currentUser.person_id);
+      // Credit whoever the chore belongs to, and say who tapped it. For your own
+      // chore those are the same person and the call is unchanged; when an admin
+      // ticks a child's chore (#53) the points go to the child and the admin is
+      // recorded as having vouched for it.
+      completeAssignment(
+        assignment.assignment_id,
+        assignment.person_id || $currentUser.person_id,
+        $currentUser.person_id
+      );
     }
   }
 
@@ -82,7 +90,11 @@
         type="button"
         class="check-btn"
         on:click={handleTap}
-        aria-label={isUnassigned ? 'Claim chore' : 'Mark done'}
+        aria-label={isUnassigned
+          ? 'Claim chore'
+          : canCompleteForOther
+            ? `Mark done for ${assignment.person_name || 'them'}`
+            : 'Mark done'}
       >
         <CheckAnimation status={assignment.status} size={32} />
       </button>

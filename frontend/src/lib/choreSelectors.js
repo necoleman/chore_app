@@ -31,28 +31,33 @@ export function filterTodayAssignments(assignments, todayStr) {
 // A person's list is split into four groups rather than colour-coded, because a
 // heading states things in words and needs no legend. Order is fixed:
 //
-//   One-off → Daily Chores → Weekly Chores → Monthly/Longterm
+//   One-off → Daily Chores → Weekend Chores → Monthly/Longterm Chores Due This Week
 //
 // One-offs lead because nothing regenerates them. A missed daily chore returns
 // tomorrow by itself; a missed one-off just sits wherever it was filed, and it
 // exists precisely because somebody asked for it specially.
-// The labels name each group's cadence. Order still runs soonest-first, so the
-// list reads as an urgency ramp even though the words describe rhythm.
+// These are the household's own words, and they describe how this family uses
+// each bucket rather than what the code keys off. Two are worth knowing about
+// before "correcting" them:
+//
+//   "Weekend Chores" is the WEEKLY group — every `frequency: 'weekly'` chore,
+//   whatever weekday it's set to. One set to Wednesday still files here.
+//
+//   "Monthly/Longterm Chores Due This Week" is the monthly + interval group.
+//   The "due this week" part holds in practice because those cadences have a
+//   7-day lead, so anything visible really is due within the week — but it's a
+//   consequence of the lead window, not something the grouping enforces.
 //
 // "Daily Chores" covers daily chores pinned to specific weekdays too (#45): the
 // group is the daily-cadence bucket, and a Mon/Thu chore belongs in it because
 // pinning means "due on those days", not "sometime this week".
 //
-// Worth knowing if these get revisited: an earlier set used deadline words
-// ("This week", "Monthly and occasional"), which read as *not now* for cards that
-// were up right now — everything visible on Today is inside its lead window, so
-// it is due within days. Cadence words avoid that trap; the Due date sort is
-// where deadline words belong, and it has its own headings below.
+// Order runs soonest-first, so the list still reads as an urgency ramp.
 export const GROUPS = [
   { key: 'oneoff',  label: 'One-off' },
   { key: 'daily',   label: 'Daily Chores' },
-  { key: 'weekly',  label: 'Weekly Chores' },
-  { key: 'monthly', label: 'Monthly/Longterm' },
+  { key: 'weekly',  label: 'Weekend Chores' },
+  { key: 'monthly', label: 'Monthly/Longterm Chores Due This Week' },
 ];
 
 // Which group an assignment belongs to. One-offs are routed by *what they are* —
@@ -61,7 +66,7 @@ export const GROUPS = [
 // Everything else keys straight off `frequency` (#45). A daily chore pinned to
 // Mon/Thu belongs under Daily Chores, because that's what pinning it means: due
 // on those days, not "sometime this week". The old computed-period approach would
-// have filed it under Weekly Chores.
+// have filed it under the weekly group.
 export function groupKeyFor(a) {
   if (a.is_one_off || String(a.assigned_by || '').startsWith('manual') || a.frequency === 'once') {
     return 'oneoff';
@@ -204,16 +209,33 @@ export function choreState(
 
   // Admin sees approve/reject inline (not in overflow) for pending items.
   const showApproveReject = showAdminControls && isPending;
-  const isInteractive = !readonly && (isOpen || isRejected) && (isMine || isUnassigned);
+
+  // An admin can check off someone ELSE's chore for them (#53) — for when a
+  // parent knows the work was done and the kid never tapped it. Points go to the
+  // assignee, not the admin, and there's no review step: a parent checking it
+  // off is already the vouching that review exists to provide.
+  //
+  // Ignores `readonly` for the same reason canUncheck does — family sections are
+  // readonly, and that's exactly where these cards live.
+  const canCompleteForOther =
+    showAdminControls && (isOpen || isRejected) && !isMine && !isUnassigned;
+
+  const isInteractive =
+    (!readonly && (isOpen || isRejected) && (isMine || isUnassigned)) || canCompleteForOther;
   // The assignee (or an admin) can undo a done/pending chore, unless it's been
   // approved (done with a reviewer recorded). Not gated on readonly so admins
   // can undo family members' cards.
+  //
+  // This is why an admin completing on someone's behalf must NOT stamp
+  // `reviewed_by` — doing so would read as "approved" here and lock them out of
+  // undoing a chore they just ticked by mistake. The acting admin is recorded in
+  // `last_modified_by` instead.
   const canUncheck =
     (isMine || showAdminControls) && ((isDone && !assignment.reviewed_by) || isPending);
 
   return {
     isOpen, isPending, isDone, isSkipped, isRejected, isMine, isUnassigned,
-    isOverdue, showApproveReject, isInteractive, canUncheck,
+    isOverdue, showApproveReject, isInteractive, canUncheck, canCompleteForOther,
   };
 }
 
