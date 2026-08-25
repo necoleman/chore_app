@@ -305,3 +305,52 @@ describe('admin completing on someone else\'s behalf (#53)', () => {
     expect(cs.canUncheck).toBe(false);
   });
 });
+
+describe('a skipped chore stays visible for the rest of the day (#54)', () => {
+  const YESTERDAY = '2026-06-27';
+  const NOW = `${TODAY}T14:00:00-05:00`;
+
+  it('keeps an OVERDUE chore an admin skipped today', () => {
+    const list = [a({
+      assignment_id: 'excused',
+      due_date: YESTERDAY,
+      status: 'skipped',
+      reviewed_at: NOW,
+    })];
+    expect(filterTodayAssignments(list, TODAY).map((x) => x.assignment_id))
+      .toEqual(['excused']);
+  });
+
+  it('still drops a MISSED occurrence — closed overnight, no reviewer', () => {
+    const list = [a({
+      assignment_id: 'missed',
+      due_date: YESTERDAY,
+      status: 'skipped',
+      reviewed_at: '',
+      points_awarded: -5,
+    })];
+    expect(filterTodayAssignments(list, TODAY)).toEqual([]);
+  });
+
+  it('drops a chore skipped on a PREVIOUS day', () => {
+    const list = [a({
+      assignment_id: 'old',
+      due_date: YESTERDAY,
+      status: 'skipped',
+      reviewed_at: `${YESTERDAY}T14:00:00-05:00`,
+    })];
+    expect(filterTodayAssignments(list, TODAY)).toEqual([]);
+  });
+
+  it('resolves a legacy UTC reviewed_at to the right local day', () => {
+    // 2026-06-29T02:00:00Z is 9pm on the 28th in Central — still "today".
+    const list = [a({
+      assignment_id: 'utc',
+      due_date: YESTERDAY,
+      status: 'skipped',
+      reviewed_at: '2026-06-29T02:00:00Z',
+    })];
+    expect(filterTodayAssignments(list, TODAY).map((x) => x.assignment_id))
+      .toEqual(['utc']);
+  });
+});

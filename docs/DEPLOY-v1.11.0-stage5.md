@@ -41,6 +41,15 @@ Signed in as a **non-admin**:
 
 - other people's cards are still read-only — no tappable circle
 
+Then check the two fixes:
+
+- **Skip** an *overdue* chore: it should stay on the list, greyed at the bottom,
+  until tomorrow — rather than vanishing on the spot
+- Edit an **interval** chore's **Next due date** to a month out and save: the
+  schedule should move even though no occurrence has been generated yet. Check
+  `last_generated_date` on the Chores tab — it should read one interval before
+  the date you picked.
+
 And on the Today screen, the group headings should read **Daily Chores**,
 **Weekend Chores**, **Monthly/Longterm Chores Due This Week**.
 
@@ -70,6 +79,27 @@ the card belonged on screen and disappeared until the next refresh. It now
 compares the new appear date against today, the same rule the Today filter uses.
 This also fixes **Move date** to any date inside the lead window, where the same
 bug was rarer and looked like a refresh quirk.
+
+**A skipped chore no longer vanishes on the spot.** A finished row stayed on
+Today only if it was due today; completed chores had an extra allowance to linger
+until the end of the day, and skipped ones didn't. So excusing an *overdue* chore
+removed it instantly, with no sign the tap had registered. Skips now use their
+`reviewed_at` stamp the same way completions use `completed_at`. A *missed*
+occurrence is also `skipped` but has no reviewer, so it still drops off at
+once — which is right, since nobody chose it and it closed overnight.
+
+**"First due date" now works on an established interval chore, and is renamed.**
+It was inert: `nextDueForChore` only consults `start_date` when a chore has no
+cursor, so the only thing that could act on an edit was a re-anchor helper — and
+that bailed unless the chore had exactly *one* assignment row in its whole
+history, counting completed ones. One past completion was enough to make it do
+nothing, silently. It now looks at the live occurrence only, and when there
+isn't one — the usual case for a long interval, which surfaces about a week
+ahead — it winds the cursor back one interval so the generator produces the date
+you asked for. The field is labelled **"Next due date"** for interval chores and
+**"Start date (optional)"** for the others, since it genuinely means two
+different things: the next due date in one case, a "not before" floor in the
+other.
 
 **The Today cadence headings are renamed** to Daily Chores / Weekend Chores /
 Monthly-Longterm Chores Due This Week. Labels only — the grouping is unchanged.

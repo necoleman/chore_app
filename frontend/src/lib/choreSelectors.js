@@ -20,7 +20,12 @@ export function filterTodayAssignments(assignments, todayStr) {
     if (!d) return false;
     if (a.status === 'done' || a.status === 'skipped') {
       if (d === todayStr) return true;
-      return a.status === 'done' && localDateOf(a.completed_at) === todayStr;
+      // Finished today → stays until tomorrow. Skips are timestamped in
+      // `reviewed_at`, which only an admin excusal writes, so a MISSED
+      // occurrence (also `skipped`, but closed overnight with no reviewer)
+      // still drops off at once. Mirrors actionToday — keep the two in step.
+      const closedAt = a.status === 'done' ? a.completed_at : a.reviewed_at;
+      return localDateOf(closedAt) === todayStr;
     }
     return appearDate(d, a.lead_days) <= todayStr;
   });

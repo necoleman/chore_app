@@ -23,12 +23,18 @@ function actionToday(params) {
     if (!choreMap[a.chore_id]) return false;
     if (a.status === 'skipped' || a.status === 'done') {
       if (a.due_date === today) return true;
-      // A chore COMPLETED today stays on Today (greyed, at the bottom) for the
-      // rest of the day even if it was overdue when checked off (#14). Compare
-      // the completion INSTANT converted to the script timezone — not a raw
-      // string slice — so legacy UTC timestamps (written before the #31 fix)
-      // and new local-offset ones both resolve to the correct local day.
-      return a.status === 'done' && completedOnLocalDate(a.completed_at, today);
+      // A chore FINISHED today stays on Today (greyed, at the bottom) for the
+      // rest of the day even if it was overdue when it was closed (#14, #54).
+      // Compare the INSTANT converted to the script timezone — not a raw string
+      // slice — so legacy UTC timestamps (written before the #31 fix) and new
+      // local-offset ones both resolve to the correct local day.
+      //
+      // Skipping uses `reviewed_at`, which only an admin excusal writes. A
+      // MISSED occurrence is also `skipped` but has no reviewed_at, so it still
+      // drops off immediately — which is right: nobody chose that, and it was
+      // closed overnight rather than by someone looking at the screen.
+      var closedAt = a.status === 'done' ? a.completed_at : a.reviewed_at;
+      return completedOnLocalDate(closedAt, today);
     }
     return true;
   });
@@ -786,20 +792,43 @@ function actionUpdateChore(body) {
 // completion history (more than one assignment, or a manual/non-open one) — we
 // never reschedule work someone may already have started.
 function reanchorIntervalAssignment(choreId, newDue) {
-  var mine = getRows('Assignments').filter(function(a) { return a.chore_id === choreId; });
-  if (mine.length !== 1) return;
-  var a = mine[0];
-  if (a.status !== 'open' || a.assigned_by !== 'auto') return;
+  var chore = getRows('Chores').find(function(c) { return c.chore_id === choreId; });
+  if (!chore) return;
 
   // Honour `weekday_due` here too (#45). Everywhere else an interval due date is
   // computed it goes through snapToWeekday; writing the raw start_date would be
   // the one path that lands a Sunday-only chore on a Tuesday.
-  var chore = getRows('Chores').find(function(c) { return c.chore_id === choreId; });
-  var dueISO = chore ? formatDate(snapToWeekday(parseISODate(newDue), chore)) : newDue;
+  var dueISO = formatDate(snapToWeekday(parseISODate(newDue), chore));
 
-  updateRow('Assignments', 'assignment_id', a.assignment_id, { due_date: dueISO });
-  updateRow('Chores', 'chore_id', choreId, { last_generated_date: dueISO });
-  invalidateCache('Assignments');
+  // Only the LIVE occurrence matters. This used to require the chore to have
+  // exactly one assignment row in its entire history, counting completed ones,
+  // so a single past completion made the whole thing bail silently (#55).
+  var live = getRows('Assignments').filter(function(a) {
+    return a.chore_id === choreId && a.status === 'open' && a.assigned_by === 'auto';
+  });
+
+  if (live.length === 1) {
+    // Move the occurrence and put the cursor on it — the cursor is meant to hold
+    // the due date of the newest auto occurrence.
+    updateRow('Assignments', 'assignment_id', live[0].assignment_id, { due_date: dueISO });
+    updateRow('Chores', 'chore_id', choreId, { last_generated_date: dueISO });
+    invalidateCache('Assignments');
+  } else if (live.length === 0) {
+    // Nothing generated yet — the usual case for a long interval, whose
+    // occurrence only appears about a week ahead. Editing the date must still
+    // move the SCHEDULE, or the field does nothing for exactly the chores it's
+    // most useful on. Wind the cursor back one interval so the generator
+    // produces `dueISO` itself once its appear date arrives.
+    //
+    // Without this, `start_date` is inert on any interval chore that already has
+    // a cursor: nextDueForChore only consults it in the no-cursor branch.
+    var n = parseInt(chore.interval_days, 10);
+    if (!n || n < 1) return;
+    var anchor = formatDate(addDaysDate(parseISODate(dueISO), -n));
+    updateRow('Chores', 'chore_id', choreId, { last_generated_date: anchor });
+  } else {
+    return; // more than one live occurrence — ambiguous, leave it alone
+  }
   invalidateCache('Chores');
 }
 
