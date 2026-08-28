@@ -2,6 +2,7 @@ import { writable, get } from 'svelte/store';
 import { get as apiGet, post } from '../api/client.js';
 import { showToast } from './ui.js';
 import { today } from '../lib/utils.js';
+import { appearDate } from '../lib/dueDates.js';
 
 export const assignments = writable([]);
 export const people = writable([]);
@@ -89,16 +90,25 @@ function getAssignment(assignment_id) {
   return get(assignments).find((a) => a.assignment_id === assignment_id) ?? null;
 }
 
-export async function completeAssignment(assignment_id, person_id) {
+// `person_id` is who gets the credit. `admin_person_id` is who tapped it, and is
+// only sent when the two differ — an admin ticking a child's chore (#53). Points
+// still go to `person_id`; the admin's involvement is what skips the review step.
+export async function completeAssignment(assignment_id, person_id, admin_person_id) {
   const prev = getAssignment(assignment_id);
   // Optimistic: guess the final state. The server will return the real status.
   updateAssignment(assignment_id, { status: 'done', _optimistic: true });
   try {
-    const result = await post('complete', { assignment_id, person_id });
+    const payload = { assignment_id, person_id };
+    if (admin_person_id && admin_person_id !== person_id) {
+      payload.admin_person_id = admin_person_id;
+    }
+    const result = await post('complete', payload);
     updateAssignment(assignment_id, { ...result, _optimistic: false });
+    // Someone else's points changed, so the leaderboard and their card are stale.
+    if (payload.admin_person_id) await refresh();
   } catch (e) {
     rollbackAssignment(assignment_id, prev);
-    showToast('Could not mark done — try again');
+    showToast(e.message || 'Could not mark done — try again');
   }
 }
 
@@ -128,7 +138,7 @@ export async function skipAssignment(assignment_id, admin_person_id) {
     updateAssignment(assignment_id, { _optimistic: false });
   } catch (e) {
     rollbackAssignment(assignment_id, prev);
-    showToast('Could not skip — try again');
+    showToast(e.message || 'Could not skip — try again');
   }
 }
 
@@ -180,7 +190,7 @@ export async function approveAssignment(assignment_id, admin_person_id) {
     updateAssignment(assignment_id, { ...result, _optimistic: false });
   } catch (e) {
     rollbackAssignment(assignment_id, prev);
-    showToast('Could not approve — try again');
+    showToast(e.message || 'Could not approve — try again');
   }
 }
 
@@ -192,7 +202,7 @@ export async function rejectAssignment(assignment_id, admin_person_id, review_no
     updateAssignment(assignment_id, { ...result, _optimistic: false });
   } catch (e) {
     rollbackAssignment(assignment_id, prev);
-    showToast('Could not reject — try again');
+    showToast(e.message || 'Could not reject — try again');
   }
 }
 
@@ -213,28 +223,40 @@ export async function reassignAssignment(assignment_id, person_id, admin_person_
     updateAssignment(assignment_id, { _optimistic: false });
   } catch (e) {
     rollbackAssignment(assignment_id, prev);
-    showToast('Could not reassign — try again');
+    showToast(e.message || 'Could not reassign — try again');
   }
 }
 
 export async function bumpAssignment(assignment_id, due_date, admin_person_id) {
   const prev = getAssignment(assignment_id);
-  // If bumped to a future date, remove from today's view optimistically.
   const todayISO = today();
-  if (due_date !== todayISO) {
-    assignments.update((list) => list.filter((a) => a.assignment_id !== assignment_id));
-  } else {
+
+  // Whether the card survives a move is decided by its APPEAR date, not its due
+  // date — a monthly chore with a 7-day lead is visible a week ahead of time.
+  // This used to compare the new due date against today and drop the card unless
+  // they matched exactly, which removed cards the Today filter would still have
+  // shown. Push hit it every time: pushing 7 days on a 7-day lead lands the
+  // appear date exactly on today, so the card belonged on screen and vanished
+  // anyway until the next refresh brought it back.
+  //
+  // Mirrors filterTodayAssignments — keep the two in step.
+  const stillVisible = appearDate(due_date, prev?.lead_days) <= todayISO;
+
+  if (stillVisible) {
     updateAssignment(assignment_id, { due_date, _optimistic: true });
+  } else {
+    assignments.update((list) => list.filter((a) => a.assignment_id !== assignment_id));
   }
+
   try {
     await post('bump', { assignment_id, due_date, admin_person_id });
+    if (stillVisible) updateAssignment(assignment_id, { _optimistic: false });
   } catch (e) {
-    // Re-insert or roll back
-    if (due_date !== todayISO) {
-      assignments.update((list) => [...list, prev]);
-    } else {
+    if (stillVisible) {
       rollbackAssignment(assignment_id, prev);
+    } else {
+      assignments.update((list) => [...list, prev]);
     }
-    showToast('Could not reschedule — try again');
+    showToast(e.message || 'Could not reschedule — try again');
   }
 }

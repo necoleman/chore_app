@@ -23,12 +23,18 @@ function actionToday(params) {
     if (!choreMap[a.chore_id]) return false;
     if (a.status === 'skipped' || a.status === 'done') {
       if (a.due_date === today) return true;
-      // A chore COMPLETED today stays on Today (greyed, at the bottom) for the
-      // rest of the day even if it was overdue when checked off (#14). Compare
-      // the completion INSTANT converted to the script timezone — not a raw
-      // string slice — so legacy UTC timestamps (written before the #31 fix)
-      // and new local-offset ones both resolve to the correct local day.
-      return a.status === 'done' && completedOnLocalDate(a.completed_at, today);
+      // A chore FINISHED today stays on Today (greyed, at the bottom) for the
+      // rest of the day even if it was overdue when it was closed (#14, #54).
+      // Compare the INSTANT converted to the script timezone — not a raw string
+      // slice — so legacy UTC timestamps (written before the #31 fix) and new
+      // local-offset ones both resolve to the correct local day.
+      //
+      // Skipping uses `reviewed_at`, which only an admin excusal writes. A
+      // MISSED occurrence is also `skipped` but has no reviewed_at, so it still
+      // drops off immediately — which is right: nobody chose that, and it was
+      // closed overnight rather than by someone looking at the screen.
+      var closedAt = a.status === 'done' ? a.completed_at : a.reviewed_at;
+      return completedOnLocalDate(closedAt, today);
     }
     return true;
   });
@@ -150,12 +156,16 @@ function actionLocations(params) {
 // The short windows are summed from the Assignments log, bucketed by when the
 // work actually happened (`completed_at`, falling back to `due_date` — the same
 // rule actionHistory sorts by). A missed occurrence records its penalty as a
-// negative `points_awarded`, so these net out losses automatically.
+// negative `points_awarded`. Rather than summing those, each window REPLAYS the
+// person's events in order and clamps at zero after every one (#56) — so no
+// figure is ever negative, and a debt the balance already absorbed doesn't
+// linger to be worked off again.
 //
 // All time deliberately uses the running `points_total` instead: it's a tally
 // rather than a query, so archiving old Assignments rows (see spec §9) can't
-// truncate it. Note it is floored at 0 by incrementPoints, so it can read
-// slightly higher than a true sum of the log.
+// truncate it. incrementPoints clamps it the same way after every write, and the
+// replay above is what makes the windows agree with it — both now describe the
+// same thing, a balance that stops at zero as it goes.
 function actionLeaderboard(params) {
   var people = getRows('People');
   var assignments = getRows('Assignments');
@@ -164,11 +174,11 @@ function actionLeaderboard(params) {
   var weekStart = getWeekStart();
   var monthStart = today.slice(0, 8) + '01';
 
-  var totals = {};
-  people.forEach(function(p) { totals[p.person_id] = { today: 0, week: 0, month: 0 }; });
+  var events = {};
+  people.forEach(function(p) { events[p.person_id] = []; });
 
   assignments.forEach(function(a) {
-    if (!a.person_id || !totals[a.person_id]) return;
+    if (!a.person_id || !events[a.person_id]) return;
     var pts = parseInt(a.points_awarded, 10);
     if (!pts) return;
     // Resolve the completion INSTANT in the script timezone rather than slicing
@@ -178,13 +188,36 @@ function actionLeaderboard(params) {
     // completedOnLocalDate for this since v1.8.1; the leaderboard didn't.
     var when = localDateOf(a.completed_at) || String(a.due_date || '').slice(0, 10);
     if (!when) return;
-    if (when >= monthStart) totals[a.person_id].month += pts;
-    if (when >= weekStart) totals[a.person_id].week += pts;
-    if (when === today) totals[a.person_id].today += pts;
+    events[a.person_id].push({ when: when, at: completionInstant(a), pts: pts });
   });
 
+  // Replay a person's events in the order they happened, clamping at zero after
+  // each one — which is exactly what incrementPoints does to `points_total`.
+  //
+  // A plain sum-then-clamp would not do: it remembers a debt the running balance
+  // had already absorbed. Someone at zero who misses a 45-point chore is still
+  // at zero, and their next chore must show up straight away — under a
+  // sum-then-clamp they would have to earn 45 points before the figure moved off
+  // 0, which is the opposite of the encouragement the floor exists to give.
+  //
+  // Ordering matters, so the events are sorted by instant. Missed occurrences
+  // carry no completion time and fall back to their due date at midnight, which
+  // correctly places the 3am penalty before anything completed later that day.
+  function balanceOver(list, keep) {
+    var total = 0;
+    list.forEach(function(e) {
+      if (!keep(e.when)) return;
+      total = Math.max(0, total + e.pts);
+    });
+    return total;
+  }
+
   var result = people.map(function(p) {
-    var t = totals[p.person_id] || { today: 0, week: 0, month: 0 };
+    // Sorted once, then replayed over each window independently — a week's
+    // balance starts fresh at the week boundary, not where the month was.
+    var log = (events[p.person_id] || []).slice().sort(function(x, y) {
+      return x.at - y.at;
+    });
     return {
       person_id:      p.person_id,
       name:           p.name,
@@ -193,9 +226,9 @@ function actionLeaderboard(params) {
       on_vacation:    p.on_vacation === true || p.on_vacation === 'TRUE',
       streak_current: parseInt(p.streak_current, 10) || 0,
       streak_best:    parseInt(p.streak_best, 10) || 0,
-      points_today:   t.today,
-      points_week:    t.week,
-      points_month:   t.month,
+      points_today:   balanceOver(log, function(w) { return w === today; }),
+      points_week:    balanceOver(log, function(w) { return w >= weekStart; }),
+      points_month:   balanceOver(log, function(w) { return w >= monthStart; }),
       points_all:     parseInt(p.points_total, 10) || 0,
     };
   });
@@ -261,6 +294,11 @@ function actionHistory(params) {
 function actionComplete(body) {
   var assignmentId = body.assignment_id;
   var personId = body.person_id;
+  // Who TAPPED it, which isn't always who gets the credit: an admin can check a
+  // chore off on someone else's behalf (#53), for when they know the work was
+  // done and the kid never marked it. Absent in the ordinary case, where the two
+  // are the same person and everything below behaves exactly as it always has.
+  var actorId = body.admin_person_id || personId;
 
   var assignments = getRows('Assignments');
   var assignment = assignments.find(function(a) { return a.assignment_id === assignmentId; });
@@ -275,8 +313,17 @@ function actionComplete(body) {
   var person = people.find(function(p) { return p.person_id === personId; });
   if (!person) throw new Error('Person not found');
 
+  var actor = (actorId === personId)
+    ? person
+    : people.find(function(p) { return p.person_id === actorId; });
+  if (!actor) throw new Error('Person not found');
+  var onBehalf = actor.person_id !== person.person_id;
+
   var requiresApproval = chore.requires_approval === true || chore.requires_approval === 'TRUE';
-  var isAdmin = person.is_admin === true || person.is_admin === 'TRUE';
+  // Checked against whoever is ACTING. The review step exists so a parent can
+  // vouch for the work — when the parent is the one ticking the box, that has
+  // already happened, so it would only ask them to approve themselves.
+  var isAdmin = actor.is_admin === true || actor.is_admin === 'TRUE';
   var now = nowIso();
 
   if (requiresApproval && !isAdmin) {
@@ -294,15 +341,25 @@ function actionComplete(body) {
     return { status: 'pending_review', completed_at: now };
   } else {
     var points = parseInt(chore.points, 10) || 0;
-    updateRow('Assignments', 'assignment_id', assignmentId, {
+    var doneUpdates = {
       status: 'done',
       completed_at: now,
       person_id: personId,
       points_awarded: points,
+      // Deliberately NOT `reviewed_by`, even when an admin ticked this for
+      // someone else. That field means "approved", and `canUncheck` treats its
+      // presence as final — setting it here would stop the admin undoing a chore
+      // they'd just ticked by mistake, which is the opposite of the intent.
       reviewed_by: '',
       reviewed_at: '',
       review_note: '',
-    });
+    };
+    if (onBehalf) {
+      // The audit trail instead: who actually pressed it.
+      doneUpdates.last_modified_by = actorId;
+      doneUpdates.last_modified_at = now;
+    }
+    updateRow('Assignments', 'assignment_id', assignmentId, doneUpdates);
     incrementPoints(personId, points, people);
     anchorIntervalOnCompletion(assignment.chore_id, todayStr());
     invalidateCache('Assignments');
@@ -762,20 +819,43 @@ function actionUpdateChore(body) {
 // completion history (more than one assignment, or a manual/non-open one) — we
 // never reschedule work someone may already have started.
 function reanchorIntervalAssignment(choreId, newDue) {
-  var mine = getRows('Assignments').filter(function(a) { return a.chore_id === choreId; });
-  if (mine.length !== 1) return;
-  var a = mine[0];
-  if (a.status !== 'open' || a.assigned_by !== 'auto') return;
+  var chore = getRows('Chores').find(function(c) { return c.chore_id === choreId; });
+  if (!chore) return;
 
   // Honour `weekday_due` here too (#45). Everywhere else an interval due date is
   // computed it goes through snapToWeekday; writing the raw start_date would be
   // the one path that lands a Sunday-only chore on a Tuesday.
-  var chore = getRows('Chores').find(function(c) { return c.chore_id === choreId; });
-  var dueISO = chore ? formatDate(snapToWeekday(parseISODate(newDue), chore)) : newDue;
+  var dueISO = formatDate(snapToWeekday(parseISODate(newDue), chore));
 
-  updateRow('Assignments', 'assignment_id', a.assignment_id, { due_date: dueISO });
-  updateRow('Chores', 'chore_id', choreId, { last_generated_date: dueISO });
-  invalidateCache('Assignments');
+  // Only the LIVE occurrence matters. This used to require the chore to have
+  // exactly one assignment row in its entire history, counting completed ones,
+  // so a single past completion made the whole thing bail silently (#55).
+  var live = getRows('Assignments').filter(function(a) {
+    return a.chore_id === choreId && a.status === 'open' && a.assigned_by === 'auto';
+  });
+
+  if (live.length === 1) {
+    // Move the occurrence and put the cursor on it — the cursor is meant to hold
+    // the due date of the newest auto occurrence.
+    updateRow('Assignments', 'assignment_id', live[0].assignment_id, { due_date: dueISO });
+    updateRow('Chores', 'chore_id', choreId, { last_generated_date: dueISO });
+    invalidateCache('Assignments');
+  } else if (live.length === 0) {
+    // Nothing generated yet — the usual case for a long interval, whose
+    // occurrence only appears about a week ahead. Editing the date must still
+    // move the SCHEDULE, or the field does nothing for exactly the chores it's
+    // most useful on. Wind the cursor back one interval so the generator
+    // produces `dueISO` itself once its appear date arrives.
+    //
+    // Without this, `start_date` is inert on any interval chore that already has
+    // a cursor: nextDueForChore only consults it in the no-cursor branch.
+    var n = parseInt(chore.interval_days, 10);
+    if (!n || n < 1) return;
+    var anchor = formatDate(addDaysDate(parseISODate(dueISO), -n));
+    updateRow('Chores', 'chore_id', choreId, { last_generated_date: anchor });
+  } else {
+    return; // more than one live occurrence — ambiguous, leave it alone
+  }
   invalidateCache('Chores');
 }
 

@@ -16,6 +16,8 @@ import {
   rejectAssignment,
   reassignAssignment,
   quickAddChore,
+  bumpAssignment,
+  completeAssignment,
 } from './data.js';
 import { today } from '../lib/utils.js';
 
@@ -165,5 +167,86 @@ describe('rejectAssignment', () => {
     const row = get(assignments)[0];
     expect(row.status).toBe('open');
     expect(row.review_note).toBe('redo it');
+  });
+});
+
+describe('bumpAssignment (#52)', () => {
+  // Helper: a date `n` days from today, as yyyy-MM-dd.
+  function dayOffset(n) {
+    const d = new Date(today() + 'T00:00:00');
+    d.setDate(d.getDate() + n);
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${d.getFullYear()}-${m}-${day}`;
+  }
+
+  it('keeps a pushed monthly chore on the list — its appear date is today', async () => {
+    // Due yesterday, lead 7. Push lands it 6 days out, which appears TODAY.
+    seed([{ assignment_id: 'm', due_date: dayOffset(-1), lead_days: 7, status: 'open' }]);
+    post.mockResolvedValueOnce({ success: true });
+    await bumpAssignment('m', dayOffset(6), 'admin');
+    const row = get(assignments).find((a) => a.assignment_id === 'm');
+    expect(row).toBeDefined();
+    expect(row.due_date).toBe(dayOffset(6));
+    expect(row._optimistic).toBe(false);
+  });
+
+  it('drops a chore moved beyond its lead window', async () => {
+    seed([{ assignment_id: 'm', due_date: today(), lead_days: 7, status: 'open' }]);
+    post.mockResolvedValueOnce({ success: true });
+    await bumpAssignment('m', dayOffset(30), 'admin');
+    expect(get(assignments).find((a) => a.assignment_id === 'm')).toBeUndefined();
+  });
+
+  it('drops a pushed WEEKLY chore — a 4-day lead cannot reach 6 days out', async () => {
+    seed([{ assignment_id: 'w', due_date: dayOffset(-1), lead_days: 4, status: 'open' }]);
+    post.mockResolvedValueOnce({ success: true });
+    await bumpAssignment('w', dayOffset(6), 'admin');
+    expect(get(assignments).find((a) => a.assignment_id === 'w')).toBeUndefined();
+  });
+
+  it('restores the row when the server rejects a still-visible move', async () => {
+    seed([{ assignment_id: 'm', due_date: dayOffset(-1), lead_days: 7, status: 'open' }]);
+    post.mockRejectedValueOnce(new Error('nope'));
+    await bumpAssignment('m', dayOffset(6), 'admin');
+    const row = get(assignments).find((a) => a.assignment_id === 'm');
+    expect(row.due_date).toBe(dayOffset(-1));
+    expect(showToast).toHaveBeenCalled();
+  });
+
+  it('re-inserts the row when the server rejects a move that removed it', async () => {
+    seed([{ assignment_id: 'm', due_date: today(), lead_days: 7, status: 'open' }]);
+    post.mockRejectedValueOnce(new Error('nope'));
+    await bumpAssignment('m', dayOffset(30), 'admin');
+    expect(get(assignments).find((a) => a.assignment_id === 'm')).toBeDefined();
+  });
+});
+
+describe('completeAssignment on another person\'s behalf (#53)', () => {
+  it('omits admin_person_id when you complete your own chore', async () => {
+    seed([{ assignment_id: 'x', person_id: 'me', status: 'open' }]);
+    post.mockResolvedValueOnce({ status: 'done', points_awarded: 3 });
+    await completeAssignment('x', 'me', 'me');
+    expect(post).toHaveBeenCalledWith('complete', { assignment_id: 'x', person_id: 'me' });
+  });
+
+  it('sends admin_person_id when an admin completes for a child', async () => {
+    seed([{ assignment_id: 'x', person_id: 'p_kid', status: 'open' }]);
+    post.mockResolvedValueOnce({ status: 'done', points_awarded: 3 });
+    apiGet.mockResolvedValue({ assignments: [], people: [] });
+    await completeAssignment('x', 'p_kid', 'p_rachel');
+    expect(post).toHaveBeenCalledWith('complete', {
+      assignment_id: 'x',
+      person_id: 'p_kid',
+      admin_person_id: 'p_rachel',
+    });
+  });
+
+  it('credits the child, not the admin', async () => {
+    seed([{ assignment_id: 'x', person_id: 'p_kid', status: 'open' }]);
+    post.mockResolvedValueOnce({ status: 'done', person_id: 'p_kid', points_awarded: 3 });
+    apiGet.mockResolvedValue({ assignments: [], people: [] });
+    await completeAssignment('x', 'p_kid', 'p_rachel');
+    expect(post.mock.calls[0][1].person_id).toBe('p_kid');
   });
 });

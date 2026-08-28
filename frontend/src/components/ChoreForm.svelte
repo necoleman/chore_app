@@ -358,10 +358,23 @@
         </label>
       {/if}
 
+      <!-- One field, two genuinely different meanings, so it says which one.
+           For an interval chore it sets the next due date and the interval
+           counts on from there. For the calendar frequencies the day comes from
+           the chore's own schedule and this is only a "not before" floor. -->
       {#if form.frequency !== 'once'}
         <label class="field">
-          <span class="label">First due date (optional)</span>
+          <span class="label">
+            {form.frequency === 'interval' ? 'Next due date' : 'Start date (optional)'}
+          </span>
           <input type="date" bind:value={form.start_date} class="input input--sm" />
+          <span class="hint">
+            {#if form.frequency === 'interval'}
+              When it's next due. The interval counts from this date.
+            {:else}
+              Don't generate before this. Leave blank to start now.
+            {/if}
+          </span>
         </label>
       {/if}
 

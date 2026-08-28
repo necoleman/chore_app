@@ -76,7 +76,7 @@ describe('groupKeyFor (#38)', () => {
     expect(groupKeyFor(a({ frequency: 'interval' }))).toBe('monthly');
   });
 
-  it('puts a daily chore pinned to weekdays under Daily Chores, not Weekly Chores (#45)', () => {
+  it('puts a daily chore pinned to weekdays under Daily Chores, not Weekend Chores (#45)', () => {
     // The whole point of folding `custom` into daily: Mon/Thu is a discipline,
     // so it groups with the dailies rather than with "sometime this week".
     expect(groupKeyFor(a({ frequency: 'daily', weekday_due: '1,4' }))).toBe('daily');
@@ -259,5 +259,98 @@ describe('groupByDue (the Due date sort)', () => {
     const list = [a({ frequency: 'weekly', due_date: TODAY })];
     expect(groupAssignments(list, 'due', TODAY)[0].key).toBe('duetoday');
     expect(groupAssignments(list, 'default', TODAY)[0].key).toBe('weekly');
+  });
+});
+
+describe('admin completing on someone else\'s behalf (#53)', () => {
+  const ADMIN = { person_id: 'p_rachel', is_admin: true };
+  const opts = { showAdminControls: true, readonly: true, todayStr: TODAY };
+
+  it('lets an admin tap a child\'s open chore even in a readonly section', () => {
+    const cs = choreState(a({ person_id: 'p_kid', status: 'open' }), ADMIN, opts);
+    expect(cs.canCompleteForOther).toBe(true);
+    expect(cs.isInteractive).toBe(true);
+  });
+
+  it('does not offer it on an unassigned chore — that is a claim, not a favour', () => {
+    const cs = choreState(a({ person_id: null, status: 'open' }), ADMIN, opts);
+    expect(cs.canCompleteForOther).toBe(false);
+  });
+
+  it('does not offer it on the admin\'s own chore', () => {
+    const cs = choreState(a({ person_id: 'p_rachel', status: 'open' }), ADMIN, opts);
+    expect(cs.canCompleteForOther).toBe(false);
+  });
+
+  it('leaves non-admins unable to tap a family card', () => {
+    const kid = { person_id: 'p_kid', is_admin: false };
+    const cs = choreState(a({ person_id: 'p_other', status: 'open' }), kid, {
+      showAdminControls: false, readonly: true, todayStr: TODAY,
+    });
+    expect(cs.canCompleteForOther).toBe(false);
+    expect(cs.isInteractive).toBe(false);
+  });
+
+  it('the admin can still undo it afterwards — no reviewer is recorded', () => {
+    const cs = choreState(
+      a({ person_id: 'p_kid', status: 'done', reviewed_by: '' }), ADMIN, opts
+    );
+    expect(cs.canUncheck).toBe(true);
+  });
+
+  it('but cannot undo one that was genuinely approved', () => {
+    const cs = choreState(
+      a({ person_id: 'p_kid', status: 'done', reviewed_by: 'p_rachel' }), ADMIN, opts
+    );
+    expect(cs.canUncheck).toBe(false);
+  });
+});
+
+describe('a skipped chore stays visible for the rest of the day (#54)', () => {
+  const YESTERDAY = '2026-06-27';
+  const NOW = `${TODAY}T14:00:00-05:00`;
+
+  it('keeps an OVERDUE chore an admin skipped today', () => {
+    const list = [a({
+      assignment_id: 'excused',
+      due_date: YESTERDAY,
+      status: 'skipped',
+      reviewed_at: NOW,
+    })];
+    expect(filterTodayAssignments(list, TODAY).map((x) => x.assignment_id))
+      .toEqual(['excused']);
+  });
+
+  it('still drops a MISSED occurrence — closed overnight, no reviewer', () => {
+    const list = [a({
+      assignment_id: 'missed',
+      due_date: YESTERDAY,
+      status: 'skipped',
+      reviewed_at: '',
+      points_awarded: -5,
+    })];
+    expect(filterTodayAssignments(list, TODAY)).toEqual([]);
+  });
+
+  it('drops a chore skipped on a PREVIOUS day', () => {
+    const list = [a({
+      assignment_id: 'old',
+      due_date: YESTERDAY,
+      status: 'skipped',
+      reviewed_at: `${YESTERDAY}T14:00:00-05:00`,
+    })];
+    expect(filterTodayAssignments(list, TODAY)).toEqual([]);
+  });
+
+  it('resolves a legacy UTC reviewed_at to the right local day', () => {
+    // 2026-06-29T02:00:00Z is 9pm on the 28th in Central — still "today".
+    const list = [a({
+      assignment_id: 'utc',
+      due_date: YESTERDAY,
+      status: 'skipped',
+      reviewed_at: '2026-06-29T02:00:00Z',
+    })];
+    expect(filterTodayAssignments(list, TODAY).map((x) => x.assignment_id))
+      .toEqual(['utc']);
   });
 });
