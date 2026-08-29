@@ -53,18 +53,31 @@ function runReminderPush() {
  * Sends an immediate notification to `personId` about a specific assignment.
  * Called from reassign/bump/generator flows.
  */
-function sendAssignmentNotification(assignmentId, personId) {
-  var people = getRows('People');
+// `knownPeople` and `knownChoreName` let a caller that ALREADY has this data pass
+// it in. Without them this function does three full sheet reads — People,
+// Assignments and Chores — purely to recover a chore name.
+//
+// That is fine for the one-off endpoints that call it (assign, add_chore: once
+// per user action). It was NOT fine in the nightly generator, which calls it once
+// per created assignment: on an Assignments tab of a couple of thousand rows,
+// each call re-read tens of thousands of cells to look up a name the generator
+// was already holding. That made it the most expensive thing in the run, and a
+// prime suspect for the run being killed before it finished (#59).
+function sendAssignmentNotification(assignmentId, personId, knownChoreName, knownPeople) {
+  var people = knownPeople || getRows('People');
   var person = people.find(function(p) { return p.person_id === personId; });
   if (!person || !person.fcm_token) return;
 
-  var assignments = getRows('Assignments');
-  var assignment = assignments.find(function(a) { return a.assignment_id === assignmentId; });
-  if (!assignment) return;
+  var choreName = knownChoreName;
+  if (!choreName) {
+    var assignments = getRows('Assignments');
+    var assignment = assignments.find(function(a) { return a.assignment_id === assignmentId; });
+    if (!assignment) return;
 
-  var chores = getRows('Chores');
-  var chore = chores.find(function(c) { return c.chore_id === assignment.chore_id; });
-  var choreName = chore ? chore.name : 'a chore';
+    var chores = getRows('Chores');
+    var chore = chores.find(function(c) { return c.chore_id === assignment.chore_id; });
+    choreName = chore ? chore.name : 'a chore';
+  }
 
   sendPush(person.fcm_token, 'New chore assigned', 'You have a new task: ' + choreName);
 }
