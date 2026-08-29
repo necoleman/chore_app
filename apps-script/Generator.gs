@@ -216,7 +216,10 @@ function processChoreGeneration(chore, today, allAssignments, people) {
   if (assignee) chore.rotation_last = assignee;
 
   if (assignee) {
-    sendAssignmentNotification(assignmentId, assignee);
+    // Pass what we already hold. Left to look them up itself, this re-read
+    // People, Assignments AND Chores in full — once per created assignment —
+    // to recover a chore name that is right here in scope (#59).
+    sendAssignmentNotification(assignmentId, assignee, chore.name, people);
   }
   return assignmentId;
 }

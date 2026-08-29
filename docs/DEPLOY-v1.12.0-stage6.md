@@ -10,10 +10,11 @@ is the part that matters — do that first and the generator is fixed tonight.
 
 ---
 
-## 1. Apps Script — TWO files
+## 1. Apps Script — THREE files
 
 - `SheetUtils.gs`
 - `Generator.gs`
+- `Reminders.gs`
 
 Then **Deploy → Manage deployments → Edit → New version → Deploy**.
 
@@ -70,6 +71,17 @@ Behaviour is unchanged. Same signature, same return values, same first-match-win
 same "skip columns that don't exist" — verified case by case against the old
 implementation before shipping, because roughly 30 call sites depend on it and
 every write in the app goes through it.
+
+**The push notification re-read three whole sheets, per assignment.**
+`sendAssignmentNotification` called `getRows` on People, Assignments *and*
+Chores — a full read of the big tab among them — purely to recover a chore name
+the generator already had in scope. Once for every assignment it created. That
+was the single most expensive thing in the run. It now takes the values it needs
+as arguments; the one-off endpoints that also call it are unchanged and still
+look them up.
+
+Together with the `updateRow` change, that's **about 41x fewer cells read per
+created assignment** — roughly 95,000 down to 2,300 on a sheet of ~2,200 rows.
 
 **One bad chore could kill the whole run.** `runNightlyGenerator` was a bare
 `forEach`, so any exception aborted it and every chore after that point in the
