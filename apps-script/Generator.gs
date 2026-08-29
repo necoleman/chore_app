@@ -1,20 +1,52 @@
 // ─── Nightly assignment generator ────────────────────────────────────────────
 
+// Chores are processed one at a time, each isolated from the others.
+//
+// This used to be a bare forEach, so ANY failure — one malformed chore, or the
+// six-minute execution ceiling — killed the whole run, and every chore after it
+// in sheet order silently stopped generating. It failed invisibly: the app just
+// showed fewer chores, with nothing to say why, and which ones survived depended
+// on where in the sheet the run happened to die (#59).
+//
+// A try/catch cannot stop a timeout — Apps Script terminates the execution
+// outright — so this handles the two causes differently. Per-chore catching
+// contains a bad chore, and the progress log below is what makes a timeout
+// legible: the last "generator:" line names how far the run got, so a truncated
+// log is itself the diagnosis.
 function runNightlyGenerator() {
-  var today = new Date();
+  var started = new Date();
+  var today = started;
 
   var chores = getRows('Chores');
   var allAssignments = getRows('Assignments');
   var people = getRows('People');
 
-  chores.forEach(function(chore) {
-    processChoreGeneration(chore, today, allAssignments, people);
+  var created = 0;
+  var failed = 0;
+
+  chores.forEach(function(chore, i) {
+    try {
+      if (processChoreGeneration(chore, today, allAssignments, people)) created++;
+    } catch (err) {
+      failed++;
+      Logger.log('generator: FAILED on ' + chore.chore_id + ' (#' + (i + 1) + ') — ' +
+                 (err && err.message ? err.message : err));
+    }
+    // Heartbeat every 10 chores, so a run killed by the time limit leaves a
+    // record of where it stopped rather than nothing at all.
+    if ((i + 1) % 10 === 0) {
+      Logger.log('generator: ' + (i + 1) + '/' + chores.length + ' chores, ' +
+                 Math.round((new Date() - started) / 1000) + 's elapsed');
+    }
   });
 
   invalidateCache('Assignments');
   invalidateCache('Chores');
   invalidateCache('People');
-  Logger.log('Nightly generator done for ' + formatDate(today));
+
+  Logger.log('generator: DONE for ' + formatDate(today) + ' — ' + chores.length +
+             ' chores, ' + created + ' created, ' + failed + ' failed, ' +
+             Math.round((new Date() - started) / 1000) + 's total');
 }
 
 // ─── Single-chore generation / roll-forward ───────────────────────────────────

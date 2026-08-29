@@ -62,18 +62,34 @@ function appendRow(sheetName, obj) {
  */
 function updateRow(sheetName, keyCol, keyVal, updates) {
   var sheet = getSheet(sheetName);
-  var values = sheet.getDataRange().getValues();
-  if (values.length < 2) return false;
-  var headers = values[0];
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return false;
+
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   var keyIdx = headers.indexOf(keyCol);
   if (keyIdx === -1) throw new Error('Column not found: ' + keyCol + ' in ' + sheetName);
 
-  for (var i = 1; i < values.length; i++) {
-    if (String(values[i][keyIdx]) === String(keyVal)) {
+  // Read ONLY the key column to locate the row. This was
+  // `getDataRange().getValues()` — every column of every row — on every call,
+  // and the nightly generator calls updateRow roughly three times per chore. On
+  // an Assignments tab with a couple of thousand rows that is tens of thousands
+  // of cells fetched per call, dozens of times a run, which is what pushed the
+  // run past Apps Script's six-minute ceiling: chores late in the sheet were
+  // never reached and silently stopped generating (#59).
+  //
+  // Behaviour is unchanged — same signature, same return values, same
+  // first-match-wins, same "skip columns that don't exist" — so every one of the
+  // 30-odd callers is unaffected.
+  var keys = sheet.getRange(2, keyIdx + 1, lastRow - 1, 1).getValues();
+  var target = String(keyVal);
+
+  for (var i = 0; i < keys.length; i++) {
+    if (String(keys[i][0]) === target) {
+      var rowNum = i + 2; // +1 for the header, +1 because ranges are 1-based
       for (var col in updates) {
         var colIdx = headers.indexOf(col);
         if (colIdx !== -1) {
-          sheet.getRange(i + 1, colIdx + 1).setValue(updates[col]);
+          sheet.getRange(rowNum, colIdx + 1).setValue(updates[col]);
         }
       }
       return true;
