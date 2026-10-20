@@ -45,7 +45,11 @@
   // points tell them apart (#38). An automatic miss records the deduction as a
   // negative `points_awarded`; an admin excusing a chore deducts nothing and
   // stamps who did it.
-  const wasMissed = (item) => item.status === 'skipped' && (item.points_awarded ?? 0) < 0;
+  // A miss has no reviewer; an admin excusal stamps one. This used to test for
+  // a negative `points_awarded`, which stopped working when misses stopped
+  // costing points (#62). Rows closed before that change still carry their
+  // negative value, and read correctly either way.
+  const wasMissed = (item) => item.status === 'skipped' && !item.reviewed_by;
 
   function statusColor(item) {
     if (item.status === 'done') return '#16a34a';
@@ -57,7 +61,10 @@
   function statusLabel(item) {
     if (item.status === 'done') return '✓ Done';
     if (item.status === 'skipped') {
-      if (wasMissed(item)) return `✗ Missed ${item.points_awarded}`;
+      // Historic rows still show what they cost; new ones cost nothing.
+      if (wasMissed(item)) {
+        return (item.points_awarded ?? 0) < 0 ? `✗ Missed ${item.points_awarded}` : '✗ Missed';
+      }
       return item.reviewer_name ? `– Skipped by ${item.reviewer_name}` : '– Skipped';
     }
     if (item.status === 'rejected') return '✗ Rejected';

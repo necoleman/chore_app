@@ -234,14 +234,26 @@ function processChoreGeneration(chore, today, allAssignments, people) {
 // visibly accumulates.
 //
 // Returns the miss count the SUCCEEDING occurrence should carry.
+// Closes a missed occurrence. Costs no points (#62).
+//
+// This used to deduct the chore's value and record it as a negative
+// `points_awarded`. It no longer does, because a falling total is the wrong
+// incentive: someone who has let a few days slide is then working to climb out
+// of a hole rather than to earn anything, which is exactly when they most need
+// the next chore to feel worth doing. Totals now only ever rise, and
+// `missed_count` carries the record of neglect instead.
+//
+// Deliberately NOT a blanket "points never change": undo and send-back still
+// reverse that chore's own award, because those points were never earned.
+// Without that, ticking a chore and unticking it would mint points on every
+// cycle. See actionUncomplete and actionReject.
+//
+// `people` is no longer needed but stays in the signature — every caller passes
+// it, and dropping it buys nothing.
 function closeMissedOccurrence(chore, assignment, people) {
-  var points = parseInt(chore.points, 10) || 0;
+  // Left blank rather than zero. History tells a miss from an admin excusal by
+  // `reviewed_by` (a miss has no reviewer), so neither needs a points marker.
   var updates = { status: 'skipped' };
-
-  if (points > 0 && assignment.person_id) {
-    incrementPoints(assignment.person_id, -points, people);
-    updates.points_awarded = -points;
-  }
 
   updateRow('Assignments', 'assignment_id', assignment.assignment_id, updates);
   assignment.status = 'skipped';

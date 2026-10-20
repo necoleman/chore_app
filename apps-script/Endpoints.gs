@@ -280,8 +280,14 @@ function actionHistory(params) {
       points_awarded: a.points_awarded || null,
       review_note:   a.review_note || null,
       // Who approved, sent back, or excused it. Lets History distinguish an admin
-      // skip ("Skipped by Rachel") from an automatic miss, which has no reviewer
-      // and carries a negative points_awarded instead.
+      // skip ("Skipped by Rachel") from an automatic miss, which has no reviewer.
+      //
+      // `reviewed_by` is sent as well as the resolved name because the name is
+      // null when the reviewer is not found in People, and History decides
+      // missed-versus-excused on the raw id (#62). It used to decide on a
+      // negative points_awarded, which stopped working once misses stopped
+      // costing points.
+      reviewed_by:   a.reviewed_by || null,
       reviewer_name: a.reviewed_by ? ((personMap[a.reviewed_by] || {}).name || null) : null,
     };
   });

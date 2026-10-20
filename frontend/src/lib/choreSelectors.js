@@ -97,6 +97,32 @@ export function compareWithinGroup(x, y) {
   );
 }
 
+// ─── Evening summary table (#61) ──────────────────────────────────────────────
+//
+// The condensed table at the top of Today, listing just the chore and who has
+// it, so the evening round can be checked at a glance.
+//
+// Keyed on LOCATION rather than the `sort_last` flag. Those two currently pick
+// out the same five chores, but that is a coincidence: `sort_last` exists to
+// control sort order, so flagging some other evening chore for ordering reasons
+// would silently pull it into this table. Location is curated membership in a
+// named category, which is what this table actually means.
+//
+// RENAME WARNING: this is the Locations row name. Rename that row in the sheet
+// and the table empties with no error, because an empty table looks exactly
+// like an evening with nothing due.
+export const EVENING_LOCATION = 'After Dinner';
+
+// Ordered by chore name, deliberately: the order must NOT change as chores get
+// checked off through the evening, so finished rows stay in place struck through
+// rather than sinking. The Today payload carries no sheet row index, so
+// alphabetical is the only stable order available.
+export function eveningRows(assignments, todayStr) {
+  return filterTodayAssignments(assignments, todayStr)
+    .filter((a) => a.location === EVENING_LOCATION)
+    .sort((x, y) => (x.chore_name || '').localeCompare(y.chore_name || ''));
+}
+
 // ─── Due-date grouping (the "Due date" sort option) ───────────────────────────
 //
 // The alternative view re-cuts the SAME cards into date buckets instead of
@@ -152,7 +178,7 @@ export function groupAssignments(items, sortMode, todayStr) {
 }
 
 // Split today's assignments into the Today screen's sections.
-export function splitTodaySections(assignments, currentUser, isAdmin, todayStr, sortMode = 'default') {
+export function splitTodaySections(assignments, currentUser, isAdmin, todayStr, sortMode = 'default', people = []) {
   const todays = filterTodayAssignments(assignments, todayStr);
   const myId = currentUser?.person_id;
 
@@ -176,11 +202,23 @@ export function splitTodaySections(assignments, currentUser, isAdmin, todayStr, 
     acc[key].items.push(a);
     return acc;
   }, {});
-  const familyGroups = Object.values(familyByPerson).map((g) => ({
-    ...g,
-    count: g.items.length,
-    groups: groupAssignments(g.items, sortMode, todayStr),
-  }));
+  // Ordered by the People tab's own row order (#61). It used to come out in
+  // whatever order the assignment rows happened to arrive in, which is why the
+  // family list looked arbitrary. Rearranging rows in the sheet now reorders the
+  // cards — the same principle as the Chores tab's "Default" sort. Anyone not
+  // found in `people` sorts to the end rather than disappearing.
+  const personOrder = (people ?? []).map((p) => p.person_id);
+  const rank = (id) => {
+    const i = personOrder.indexOf(id);
+    return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+  };
+  const familyGroups = Object.values(familyByPerson)
+    .sort((a, b) => rank(a.person_id) - rank(b.person_id))
+    .map((g) => ({
+      ...g,
+      count: g.items.length,
+      groups: groupAssignments(g.items, sortMode, todayStr),
+    }));
 
   const unassigned = groupAssignments(
     todays.filter((a) => !a.person_id && a.status === 'open'),
