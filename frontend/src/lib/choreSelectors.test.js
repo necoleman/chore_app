@@ -435,7 +435,22 @@ describe('remainingCount — the number on a person card (#63)', () => {
   });
 
   it('counts a sent-back chore as outstanding again', () => {
+    // This is the real path: actionReject writes `open`, not `rejected`. A
+    // chore goes pending_review (uncounted), then back to open (counted).
+    expect(remainingCount([a({ status: 'pending_review' })])).toBe(0);
+    expect(remainingCount([a({ status: 'open', review_note: 'Do the corners' })])).toBe(1);
+  });
+
+  it('also counts the legacy `rejected` status, which nothing writes any more', () => {
+    // Kept defensively: `rejected` survives only in History's terminal list.
+    // If anything ever starts writing it again, it must count as outstanding.
     expect(remainingCount([a({ status: 'rejected' })])).toBe(1);
+  });
+
+  it('does not count a superseded rejection — that occurrence is over', () => {
+    // actionReject closes a superseded occurrence as `skipped`; the newer one
+    // is what the person actually has to do.
+    expect(remainingCount([a({ status: 'skipped', reviewed_by: 'rachel' })])).toBe(0);
   });
 
   it('is zero when everything is finished, and copes with nothing', () => {
