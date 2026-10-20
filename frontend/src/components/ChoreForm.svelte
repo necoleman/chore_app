@@ -2,6 +2,13 @@
   import { post } from '../api/client.js';
   import { showToast } from '../stores/ui.js';
   import { portal } from '../lib/portal.js';
+  import {
+    ignoredScheduleFields,
+    clearIgnoredScheduleFields,
+    stripLegacyScheduleFields,
+    parseWeekdays,
+    usesNthWeekday,
+  } from '../lib/scheduleFields.js';
 
   export let chore = null; // null = create mode
   export let people = [];
@@ -62,10 +69,7 @@
   let saving = false;
 
   // Daily's pinned weekdays, read out of `weekday_due` (#45).
-  let selectedDays = String(form.weekday_due ?? '')
-    .split(',')
-    .map((d) => parseInt(String(d).trim(), 10))
-    .filter((n) => !Number.isNaN(n));
+  let selectedDays = parseWeekdays(form.weekday_due);
 
   // Ensure a weekly chore always has a valid 0–6 weekday so the <select> and the
   // stored value agree (a blank/leftover value would show Sunday but save empty).
@@ -119,9 +123,7 @@
   // now lives in the shared `weekday_due` (#45). Coerce the ordinal to a number
   // so it matches the numeric <option> values (Svelte binds with ===), and keep
   // weekday_due a STRING everywhere so it round-trips consistently.
-  const hasNth =
-    form.monthly_week !== '' && form.monthly_week != null &&
-    String(form.weekday_due ?? '') !== '';
+  const hasNth = usesNthWeekday(form);
   if (hasNth) form.monthly_week = parseInt(form.monthly_week, 10);
   if (form.weekday_due != null) form.weekday_due = String(form.weekday_due);
 
@@ -164,6 +166,38 @@
     form.weekday_due = selectedDays.join(',');
   }
 
+  // Scheduling fields the generator will silently ignore (lib/scheduleFields.js).
+  //
+  // Two halves, and the split is the point. A frequency change the user makes
+  // HERE clears the fields the new cadence ignores — they're stale by their own
+  // action, and the alternative is a dead value that reads as the chore's
+  // intent: a monthly chore still carrying `interval_days = 90` looks like it
+  // runs four times a year while the generator runs it twelve. A stray value
+  // that was already in the sheet when the editor opened is only WARNED about,
+  // because quietly rewriting a schedule as a side effect of opening it to look
+  // is worse than saying so.
+  let lastFrequency = form.frequency;
+  $: if (form.frequency !== lastFrequency) {
+    lastFrequency = form.frequency;
+    form = clearIgnoredScheduleFields(form);
+    // `selectedDays` and `monthlyMode` mirror form fields in local state, so
+    // resync them or the controls keep offering days/modes that are no longer
+    // stored (a cleared weekday_due with the day buttons still lit).
+    selectedDays = parseWeekdays(form.weekday_due);
+    dailyMode = selectedDays.length > 0 ? 'set' : 'every';
+    monthlyMode = usesNthWeekday(form) ? 'weekday' : 'day';
+  }
+
+  $: ignoredFields = ignoredScheduleFields(form);
+
+  function clearIgnoredField(field) {
+    form = { ...form, [field]: '' };
+    if (field === 'weekday_due') {
+      selectedDays = [];
+      dailyMode = 'every';
+    }
+  }
+
   async function handleSubmit() {
     if (!form.name.trim()) {
       showToast('Name is required');
@@ -177,7 +211,11 @@
     saving = true;
     try {
       const action = chore ? 'update_chore' : 'add_chore';
-      await post(action, form);
+      // `form` is spread from the sheet row in edit mode, so it can carry the
+      // pre-v1.10 `custom_days` / `monthly_weekday` columns. Nothing reads them
+      // and the backend's own allowlists drop them; strip them here too so the
+      // editor never sends a value it can't show or explain.
+      await post(action, stripLegacyScheduleFields(form));
       showToast(chore ? 'Chore updated' : 'Chore added', 'success');
       onSave();
     } catch (e) {
@@ -234,6 +272,27 @@
           <option value="once">One-time</option>
         </select>
       </label>
+
+      <!-- The generator reads only some scheduling columns per frequency, so a
+           value left over from a previous frequency choice does nothing at all —
+           no error, nothing in the sheet to show it. Say so here rather than let
+           it read as the chore's cadence. Saving is never blocked: the value is
+           already inert, and the chore may be mid-rework. -->
+      {#if ignoredFields.length > 0}
+        <div class="field">
+          <div class="warn">
+            <p class="warn-title">Ignored for this frequency</p>
+            {#each ignoredFields as f (f.field)}
+              <p class="warn-row">
+                <span class="warn-text">{f.message}</span>
+                <button type="button" class="warn-clear" on:click={() => clearIgnoredField(f.field)}>
+                  Clear
+                </button>
+              </p>
+            {/each}
+          </div>
+        </div>
+      {/if}
 
       {#if form.frequency === 'daily'}
         <div class="field">
@@ -483,6 +542,49 @@
   .hint {
     font-size: 12px;
     color: #9ca3af;
+  }
+
+  .warn {
+    border: 1px solid #fcd34d;
+    background: #fffbeb;
+    border-radius: 8px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .warn-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: #92400e;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .warn-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .warn-text {
+    flex: 1;
+    font-size: 12px;
+    line-height: 1.45;
+    color: #78350f;
+  }
+
+  .warn-clear {
+    flex: none;
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid #d97706;
+    background: none;
+    color: #92400e;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
   }
 
   .sheet-title {

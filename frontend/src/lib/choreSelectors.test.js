@@ -5,6 +5,9 @@ import {
   compareWithinGroup,
   groupByCadence,
   groupByDue,
+  eveningRows,
+  EVENING_LOCATION,
+  remainingCount,
   groupAssignments,
   splitTodaySections,
   choreState,
@@ -352,5 +355,118 @@ describe('a skipped chore stays visible for the rest of the day (#54)', () => {
     })];
     expect(filterTodayAssignments(list, TODAY).map((x) => x.assignment_id))
       .toEqual(['utc']);
+  });
+});
+
+describe('eveningRows — the After Dinner table (#61)', () => {
+  const ev = (over) => a({ location: EVENING_LOCATION, ...over });
+
+  it('picks out only the evening location', () => {
+    const list = [
+      ev({ assignment_id: 'dishes', chore_name: 'Wash dishes' }),
+      a({ assignment_id: 'bath', chore_name: 'Clean bathroom', location: 'Upstairs Bathroom' }),
+    ];
+    expect(eveningRows(list, TODAY).map((x) => x.assignment_id)).toEqual(['dishes']);
+  });
+
+  it('orders by chore name so the list does not reshuffle as chores are ticked', () => {
+    const list = [
+      ev({ assignment_id: 'c', chore_name: 'Wash dishes' }),
+      ev({ assignment_id: 'a', chore_name: 'Clean stove' }),
+      ev({ assignment_id: 'b', chore_name: 'Clear tables' }),
+    ];
+    expect(eveningRows(list, TODAY).map((x) => x.assignment_id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('keeps a finished chore in place rather than sinking it', () => {
+    const list = [
+      ev({ assignment_id: 'done', chore_name: 'Clean stove', status: 'done', completed_at: `${TODAY}T14:00:00-05:00` }),
+      ev({ assignment_id: 'open', chore_name: 'Wash dishes', status: 'open' }),
+    ];
+    expect(eveningRows(list, TODAY).map((x) => x.assignment_id)).toEqual(['done', 'open']);
+  });
+
+  it('is empty when nothing in that location is due', () => {
+    expect(eveningRows([a({ location: 'Kitchen' })], TODAY)).toEqual([]);
+    expect(eveningRows([], TODAY)).toEqual([]);
+  });
+});
+
+describe('family card order follows the People tab (#61)', () => {
+  const me = { person_id: 'rachel', is_admin: true };
+  const people = [
+    { person_id: 'rachel' }, { person_id: 'neal' }, { person_id: 'claire' },
+    { person_id: 'will' }, { person_id: 'elmira' },
+  ];
+
+  it('orders by People row, not by the order assignments arrive in', () => {
+    const list = [
+      a({ person_id: 'elmira' }), a({ person_id: 'will' }),
+      a({ person_id: 'claire' }), a({ person_id: 'neal' }),
+    ];
+    const { familyGroups } = splitTodaySections(list, me, true, TODAY, 'default', people);
+    expect(familyGroups.map((g) => g.person_id)).toEqual(['neal', 'claire', 'will', 'elmira']);
+  });
+
+  it('puts Rachel before Neal when viewed by someone else', () => {
+    const claire = { person_id: 'claire', is_admin: false };
+    const list = [a({ person_id: 'neal' }), a({ person_id: 'rachel' })];
+    const { familyGroups } = splitTodaySections(list, claire, false, TODAY, 'default', people);
+    expect(familyGroups.map((g) => g.person_id)).toEqual(['rachel', 'neal']);
+  });
+
+  it('sorts anyone missing from People to the end rather than dropping them', () => {
+    const list = [a({ person_id: 'ghost' }), a({ person_id: 'neal' })];
+    const { familyGroups } = splitTodaySections(list, me, true, TODAY, 'default', people);
+    expect(familyGroups.map((g) => g.person_id)).toEqual(['neal', 'ghost']);
+  });
+});
+
+describe('remainingCount — the number on a person card (#63)', () => {
+  it('counts only what is still to do', () => {
+    expect(remainingCount([
+      a({ status: 'open' }), a({ status: 'open' }),
+      a({ status: 'done' }), a({ status: 'skipped' }),
+    ])).toBe(2);
+  });
+
+  it('treats pending_review as finished — the work is done, the delay is the reviewer\'s', () => {
+    expect(remainingCount([a({ status: 'pending_review' }), a({ status: 'open' })])).toBe(1);
+  });
+
+  it('counts a sent-back chore as outstanding again', () => {
+    // This is the real path: actionReject writes `open`, not `rejected`. A
+    // chore goes pending_review (uncounted), then back to open (counted).
+    expect(remainingCount([a({ status: 'pending_review' })])).toBe(0);
+    expect(remainingCount([a({ status: 'open', review_note: 'Do the corners' })])).toBe(1);
+  });
+
+  it('also counts the legacy `rejected` status, which nothing writes any more', () => {
+    // Kept defensively: `rejected` survives only in History's terminal list.
+    // If anything ever starts writing it again, it must count as outstanding.
+    expect(remainingCount([a({ status: 'rejected' })])).toBe(1);
+  });
+
+  it('does not count a superseded rejection — that occurrence is over', () => {
+    // actionReject closes a superseded occurrence as `skipped`; the newer one
+    // is what the person actually has to do.
+    expect(remainingCount([a({ status: 'skipped', reviewed_by: 'rachel' })])).toBe(0);
+  });
+
+  it('is zero when everything is finished, and copes with nothing', () => {
+    expect(remainingCount([a({ status: 'done' }), a({ status: 'skipped' })])).toBe(0);
+    expect(remainingCount([])).toBe(0);
+    expect(remainingCount(undefined)).toBe(0);
+  });
+
+  it('is what the family cards report', () => {
+    const me = { person_id: 'rachel', is_admin: true };
+    const people = [{ person_id: 'rachel' }, { person_id: 'claire' }];
+    const list = [
+      a({ person_id: 'claire', status: 'open' }),
+      a({ person_id: 'claire', status: 'done', completed_at: `${TODAY}T10:00:00-05:00` }),
+    ];
+    const { familyGroups } = splitTodaySections(list, me, true, TODAY, 'default', people);
+    expect(familyGroups[0].count).toBe(1);
   });
 });

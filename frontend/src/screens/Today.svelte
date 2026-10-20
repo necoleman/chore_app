@@ -3,10 +3,12 @@
   import { assignments, people, isRefreshing, lastUpdated, startPolling, stopPolling, quickAddChore } from '../stores/data.js';
   import { currentUser } from '../stores/user.js';
   import ChoreGroups from '../components/ChoreGroups.svelte';
+  import AfterDinnerTable from '../components/AfterDinnerTable.svelte';
+  import PersonPanel from '../components/PersonPanel.svelte';
   import QuickAddChore from '../components/QuickAddChore.svelte';
   import NeedsReviewSection from '../components/NeedsReviewSection.svelte';
   import { relativeTime, today } from '../lib/utils.js';
-  import { splitTodaySections } from '../lib/choreSelectors.js';
+  import { splitTodaySections, eveningRows, remainingCount } from '../lib/choreSelectors.js';
   import { loadOpen, saveOpen } from '../lib/persistOpen.js';
 
   $: isAdmin = $currentUser?.is_admin;
@@ -17,18 +19,34 @@
 
   // All Today-screen filtering/grouping/sorting lives in the pure selector
   // (unit-tested in lib/choreSelectors.test.js).
-  $: sections = splitTodaySections($assignments, $currentUser, isAdmin, todayStr, sortMode);
+  // `$people` is passed in so the family cards follow the People tab's row
+  // order rather than whatever order the assignments happened to arrive in.
+  $: sections = splitTodaySections($assignments, $currentUser, isAdmin, todayStr, sortMode, $people);
   $: pendingReview = sections.pendingReview;
   $: myGroups = sections.mine;
-  $: myCount = myGroups.reduce((n, g) => n + g.items.length, 0);
+  // What's left to do, not the total — see remainingCount (#63).
+  $: myCount = myGroups.reduce((n, g) => n + remainingCount(g.items), 0);
   $: familyGroups = sections.familyGroups;
   $: unassigned = sections.unassigned;
+  $: evening = eveningRows($assignments, todayStr);
+
+  // Read name and colour from the People row rather than the stored session
+  // user: `$people` comes fresh from the server, so editing a colour in the
+  // sheet takes effect on the next poll instead of needing a re-login.
+  $: me = ($people ?? []).find((p) => p.person_id === $currentUser?.person_id);
+  $: myPerson = {
+    person_id: $currentUser?.person_id,
+    name: me?.name ?? $currentUser?.name ?? 'Me',
+    color: me?.color ?? $currentUser?.color,
+    count: myCount,
+    groups: myGroups,
+  };
 
   let showQuickAdd = false;
 
-  // Person-level folds are the only ones that survive: they answer "whose chores
-  // am I looking at", which is a different question from the cadence groups.
-  // Mine open by default, family closed.
+  // Per-person open/closed state, persisted. Yours opens by default; everyone
+  // else's stays shut, so the screen opens on your own chores rather than a
+  // wall of five panels.
   let mineOpen = loadOpen('mine', true);
   $: saveOpen('mine', mineOpen);
 
@@ -79,37 +97,39 @@
   <!-- Needs review (admin only) -->
   <NeedsReviewSection pendingItems={pendingReview} />
 
-  <!-- My chores -->
+  <!-- The evening round, condensed (#61) -->
+  <AfterDinnerTable rows={evening} />
+
+  <!-- Your own panel, always first and open by default -->
   <section class="section">
-    <details class="fold" bind:open={mineOpen}>
-      <summary class="fold-summary">
-        <span class="section-title">My chores</span>
-        <span class="fold-count">{myCount} {myCount === 1 ? 'chore' : 'chores'}</span>
-      </summary>
-      {#if myGroups.length === 0}
-        <p class="empty">All done! 🎉</p>
-      {:else}
-        <ChoreGroups groups={myGroups} showAdminControls={isAdmin} />
-      {/if}
-    </details>
+    <PersonPanel
+      person={myPerson}
+      open={mineOpen}
+      showAdminControls={isAdmin}
+      {todayStr}
+      onToggle={(v) => (mineOpen = v)}
+    />
   </section>
 
-  <!-- One dropdown per family member, so you can open just the person you want -->
+  <!-- One panel per family member, all closed by default -->
   {#if familyGroups.length > 0}
     <section class="section">
+      <!-- Only drawn while your own chores are showing. Collapsed, there is
+           nothing above it to divide, and the rule reads as separating a single
+           card from a heading. -->
+      {#if mineOpen}
+        <div class="family-divider"></div>
+      {/if}
       <h2 class="section-title">Family</h2>
       {#each familyGroups as person (person.person_id)}
-        <details
-          class="fold"
+        <PersonPanel
+          {person}
           open={isFamilyOpen(person.person_id)}
-          on:toggle={(e) => toggleFamily(person.person_id, e.currentTarget.open)}
-        >
-          <summary class="fold-summary">
-            <span class="fold-name">{person.name}</span>
-            <span class="fold-count">{person.count} {person.count === 1 ? 'chore' : 'chores'}</span>
-          </summary>
-          <ChoreGroups groups={person.groups} showAdminControls={isAdmin} readonly={true} />
-        </details>
+          showAdminControls={isAdmin}
+          readonly={true}
+          {todayStr}
+          onToggle={(v) => toggleFamily(person.person_id, v)}
+        />
       {/each}
     </section>
   {/if}
@@ -224,60 +244,13 @@
     display: block;
   }
 
-  .empty {
-    font-size: 14px;
-    color: #6b7280;
-    text-align: center;
-    padding: 20px 0;
-  }
 
-  .fold {
-    margin-bottom: 4px;
-  }
 
-  .fold-summary {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    cursor: pointer;
-    list-style: none;
-    padding: 8px 0;
-    user-select: none;
-  }
 
-  .fold-summary::-webkit-details-marker {
-    display: none;
-  }
 
   /* Caret that rotates when the fold is open. */
-  .fold-summary::before {
-    content: '';
-    width: 6px;
-    height: 6px;
-    border-right: 2px solid #9ca3af;
-    border-bottom: 2px solid #9ca3af;
-    transform: rotate(-45deg);
-    transition: transform 0.15s ease;
-    flex: none;
-  }
 
-  .fold[open] .fold-summary::before {
-    transform: rotate(45deg);
-  }
 
-  .fold-summary .section-title {
-    padding: 0;
-  }
 
-  .fold-name {
-    font-size: 14px;
-    font-weight: 600;
-    color: #374151;
-  }
 
-  .fold-count {
-    font-size: 12px;
-    font-weight: 600;
-    color: #9ca3af;
-  }
 </style>
