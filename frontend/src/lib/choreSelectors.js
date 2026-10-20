@@ -160,6 +160,18 @@ function buildGroups(defs, keyOf, items) {
     .map((g) => ({ ...g, items: [...buckets[g.key]].sort(compareWithinGroup) }));
 }
 
+// How many of a person's chores are still outstanding (#63).
+//
+// The card's count is what's LEFT to do, not how many exist — a card reading
+// "5 chores" when four are already ticked is discouraging and tells you nothing
+// useful. `pending_review` counts as finished: the person has done the work, and
+// the delay is the reviewer's.
+export function remainingCount(items) {
+  return (items ?? []).filter(
+    (a) => a.status !== 'done' && a.status !== 'skipped' && a.status !== 'pending_review'
+  ).length;
+}
+
 // Split a person's assignments into the ordered, non-empty cadence groups.
 // Returns [{ key, label, items }] — groups with nothing in them are omitted so
 // the screen never shows an empty heading.
@@ -216,7 +228,7 @@ export function splitTodaySections(assignments, currentUser, isAdmin, todayStr, 
     .sort((a, b) => rank(a.person_id) - rank(b.person_id))
     .map((g) => ({
       ...g,
-      count: g.items.length,
+      count: remainingCount(g.items),
       groups: groupAssignments(g.items, sortMode, todayStr),
     }));
 

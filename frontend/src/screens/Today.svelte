@@ -8,7 +8,7 @@
   import QuickAddChore from '../components/QuickAddChore.svelte';
   import NeedsReviewSection from '../components/NeedsReviewSection.svelte';
   import { relativeTime, today } from '../lib/utils.js';
-  import { splitTodaySections, eveningRows } from '../lib/choreSelectors.js';
+  import { splitTodaySections, eveningRows, remainingCount } from '../lib/choreSelectors.js';
   import { loadOpen, saveOpen } from '../lib/persistOpen.js';
 
   $: isAdmin = $currentUser?.is_admin;
@@ -24,7 +24,8 @@
   $: sections = splitTodaySections($assignments, $currentUser, isAdmin, todayStr, sortMode, $people);
   $: pendingReview = sections.pendingReview;
   $: myGroups = sections.mine;
-  $: myCount = myGroups.reduce((n, g) => n + g.items.length, 0);
+  // What's left to do, not the total — see remainingCount (#63).
+  $: myCount = myGroups.reduce((n, g) => n + remainingCount(g.items), 0);
   $: familyGroups = sections.familyGroups;
   $: unassigned = sections.unassigned;
   $: evening = eveningRows($assignments, todayStr);

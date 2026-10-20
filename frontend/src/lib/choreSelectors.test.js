@@ -7,6 +7,7 @@ import {
   groupByDue,
   eveningRows,
   EVENING_LOCATION,
+  remainingCount,
   groupAssignments,
   splitTodaySections,
   choreState,
@@ -418,5 +419,39 @@ describe('family card order follows the People tab (#61)', () => {
     const list = [a({ person_id: 'ghost' }), a({ person_id: 'neal' })];
     const { familyGroups } = splitTodaySections(list, me, true, TODAY, 'default', people);
     expect(familyGroups.map((g) => g.person_id)).toEqual(['neal', 'ghost']);
+  });
+});
+
+describe('remainingCount — the number on a person card (#63)', () => {
+  it('counts only what is still to do', () => {
+    expect(remainingCount([
+      a({ status: 'open' }), a({ status: 'open' }),
+      a({ status: 'done' }), a({ status: 'skipped' }),
+    ])).toBe(2);
+  });
+
+  it('treats pending_review as finished — the work is done, the delay is the reviewer\'s', () => {
+    expect(remainingCount([a({ status: 'pending_review' }), a({ status: 'open' })])).toBe(1);
+  });
+
+  it('counts a sent-back chore as outstanding again', () => {
+    expect(remainingCount([a({ status: 'rejected' })])).toBe(1);
+  });
+
+  it('is zero when everything is finished, and copes with nothing', () => {
+    expect(remainingCount([a({ status: 'done' }), a({ status: 'skipped' })])).toBe(0);
+    expect(remainingCount([])).toBe(0);
+    expect(remainingCount(undefined)).toBe(0);
+  });
+
+  it('is what the family cards report', () => {
+    const me = { person_id: 'rachel', is_admin: true };
+    const people = [{ person_id: 'rachel' }, { person_id: 'claire' }];
+    const list = [
+      a({ person_id: 'claire', status: 'open' }),
+      a({ person_id: 'claire', status: 'done', completed_at: `${TODAY}T10:00:00-05:00` }),
+    ];
+    const { familyGroups } = splitTodaySections(list, me, true, TODAY, 'default', people);
+    expect(familyGroups[0].count).toBe(1);
   });
 });
