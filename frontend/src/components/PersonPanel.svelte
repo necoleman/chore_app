@@ -36,7 +36,10 @@
         {initials(person.name)}
       </span>
       <span class="name">{person.name}</span>
-      <span class="count">{person.count} {person.count === 1 ? 'chore' : 'chores'}</span>
+      <!-- "0 chores" is accurate but flat at the one moment it's earned. -->
+      <span class="count" class:count--clear={person.count === 0}>
+        {person.count === 0 ? 'All done' : `${person.count} ${person.count === 1 ? 'chore' : 'chores'}`}
+      </span>
       <svg
         class="chev"
         class:chev--open={open}
@@ -125,6 +128,14 @@
     font-size: 12px;
     color: #6b7280;
     flex: none;
+    white-space: nowrap;
+  }
+
+  /* Picks up the person's own colour, so finishing reads as a small reward
+     rather than just an absence of work. */
+  .count--clear {
+    color: var(--stripe);
+    font-weight: 600;
   }
 
   .chev {
