@@ -60,6 +60,8 @@ and Claire sees Rachel, Neal, Will, Elmira.
 - A finished row stays in place, struck through, rather than vanishing
 - Your own panel is first and open; everyone else's is closed
 - Tapping anywhere on a person's header collapses or expands it
+- The number on a card is what's LEFT, not the total — tick one and it drops
+- A person with nothing left reads **All done** in their own colour
 - Each card shows a fact, and it is the same fact after a refresh
 - Tomorrow, the facts are different
 - Miss a chore overnight: no points come off anyone, and History reads "Missed"
@@ -89,6 +91,15 @@ the hit area.
 
 **A daily fact per person.** 60 each, picked from the date rather than at random,
 so it is stable across refreshes and the same for everybody on a given day.
+
+**The count on a card is chores remaining.** It was the total, so a card read
+"5 chores" with four already ticked — discouraging, and useless for deciding
+whether opening the panel is worth it. `pending_review` counts as finished: that
+person has done the work and the delay is the reviewer's. A chore sent back while
+still current returns to `open` and counts again; one sent back after its
+replacement exists closes as `skipped` and does not, because the newer occurrence
+is what they actually have to do. A cleared card reads **All done** in the
+person's own colour.
 
 **Missing a chore no longer costs points.** Totals only ever rise. A falling
 total is the wrong incentive: someone who has let a few days slide is then
