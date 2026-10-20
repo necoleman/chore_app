@@ -536,18 +536,52 @@ function actionUncomplete(body) {
     invalidateCache('People');
   }
 
+  // Has this occurrence already been superseded? While it sat completed — or
+  // pending review, which the generator deliberately does not close — the next
+  // occurrence may well have been created alongside it (#25).
+  //
+  // Reopening it in that case leaves the chore with TWO live occurrences, which
+  // is exactly what the roll-forward exists to prevent: the rotation appears to
+  // hand one chore to two people, and the stale one sits overdue until the next
+  // nightly run closes it as a miss and charges someone for work they had
+  // actually done (#60). `actionReject` has always checked this; uncomplete
+  // never did.
+  // Compare due dates rather than just asking whether another live row exists.
+  // `liveOccurrence` returns the latest open/pending occurrence whatever its
+  // date, so a chore that somehow held an OLDER live row would otherwise make
+  // this one look superseded and get closed. Only a genuinely later occurrence
+  // supersedes.
+  var live = liveOccurrence(assignment.chore_id, assignmentId);
+  var myDue = String(assignment.due_date || '').slice(0, 10);
+  var superseded = !!live && String(live.due_date || '').slice(0, 10) > myDue;
+  var reopened = !superseded;
+
   updateRow('Assignments', 'assignment_id', assignmentId, {
-    status: 'open',
+    // Superseded: this occurrence is finished with either way, so close it
+    // rather than reviving it. `skipped` with NO points_awarded reads as an
+    // excusal rather than a miss — the awarded points were already reversed
+    // above, and charging a penalty on top would be a double deduction.
+    //
+    // The live occurrence's miss count is deliberately left alone. A rejection
+    // asserts the work wasn't done; an uncheck is usually someone correcting a
+    // mis-tap, and shouldn't quietly cost a streak.
+    status: reopened ? 'open' : 'skipped',
     completed_at: '',
     points_awarded: '',
   });
 
   // Undo the completion re-anchor: put the cursor back on this occurrence's own
   // due date, which is what the generator stamped when it created the row.
-  anchorIntervalOnCompletion(assignment.chore_id, String(assignment.due_date || '').slice(0, 10));
+  //
+  // Only when it's actually being reopened. If a newer occurrence exists, the
+  // cursor belongs on THAT one — winding it back to a superseded date would make
+  // the generator produce an occurrence that has already been replaced.
+  if (reopened) {
+    anchorIntervalOnCompletion(assignment.chore_id, String(assignment.due_date || '').slice(0, 10));
+  }
 
   invalidateCache('Assignments');
-  return { status: 'open', completed_at: null, points_awarded: null };
+  return { status: reopened ? 'open' : 'skipped', completed_at: null, points_awarded: null };
 }
 
 // ─── POST: skip ───────────────────────────────────────────────────────────────
